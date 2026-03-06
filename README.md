@@ -10,6 +10,7 @@ An [MCP (Model Context Protocol)](https://modelcontextprotocol.io) server for th
 ## Table of Contents
 
 - [Install](#install)
+- [Prerequisites](#prerequisites)
 - [How It Works](#how-it-works)
 - [MCP Configuration](#mcp-configuration)
 - [Build from Source](#build-from-source)
@@ -41,6 +42,28 @@ enable-banking-mcp register && enable-banking-mcp init && enable-banking-mcp ins
 ```
 
 > **Windows:** Download the `.exe` from [Releases](https://github.com/Algiras/enable-banking-mcp/releases/latest) and run `enable-banking-mcp.exe install`.
+
+---
+
+## Prerequisites
+
+You need a free **Enable Banking** developer account before you can use this server. Enable Banking is the API layer that connects to hundreds of European banks via Open Banking (PSD2).
+
+### Create an Enable Banking Account
+
+1. Go to [enablebanking.com](https://enablebanking.com) and click **Get started for free**
+2. Verify your email and log in to the [Control Panel](https://enablebanking.com/cp/)
+
+From here you will create either a **Sandbox** application (free, no real bank required) or a **Production** application (requires going through a short approval process).
+
+```mermaid
+flowchart LR
+    A(["enablebanking.com\nSign up for free"]) --> B["Control Panel\nenablebanking.com/cp"]
+    B --> C["Sandbox App\nFree · Instant · Test data"]
+    B --> D["Production App\nReal banks · Requires approval"]
+    C --> E["enable-banking-mcp\nconfigure + init + install"]
+    D --> E
+```
 
 ---
 
@@ -160,11 +183,21 @@ flowchart TD
     J --> K(["✅ Ready"])
 ```
 
-### 1. Get Sandbox Credentials
+### 1. Create a Sandbox Application in the Control Panel
 
-1. Sign up at [enablebanking.com](https://enablebanking.com)
-2. Go to the [Control Panel](https://enablebanking.com/cp/) and create a **Sandbox** application
-3. Note your **App ID** and download your **RSA private key** (PEM format)
+1. Log in to [enablebanking.com/cp](https://enablebanking.com/cp/)
+2. Click **Applications** in the left sidebar
+3. Click **+ New application**
+4. Fill in the form:
+   - **Name** — any name, e.g. `My MCP Sandbox`
+   - **Environment** — select **Sandbox**
+   - **Redirect URL** — enter `https://localhost:8080/callback`
+   - Description, privacy policy URL — can be placeholder values for sandbox
+5. Click **Create**
+6. On the application detail page, note your **Application ID** (UUID)
+7. Click **Download private key** — save the `.pem` file somewhere safe
+
+> The private key is shown **only once**. If you lose it, delete the app and create a new one.
 
 ### 2. Configure
 
@@ -238,18 +271,25 @@ flowchart TD
     J --> K(["✅ Ready"])
 ```
 
-### 1. Register a Production Application
+### 1. Create a Production Application in the Control Panel
+
+1. Log in to [enablebanking.com/cp](https://enablebanking.com/cp/)
+2. Click **Applications → + New application**
+3. Fill in the form:
+   - **Name** — your app name
+   - **Environment** — select **Production**
+   - **Redirect URL** — `https://localhost:8080/callback`
+   - **Description**, **Privacy Policy URL**, **Terms URL**, **GDPR contact email** — required for production
+4. Click **Create** — Enable Banking may require a short review for production access
+5. Note your **Application ID** and download your **private key**
+
+Alternatively, the `register` command automates steps 3–5:
 
 ```sh
-./target/release/enable-banking-mcp register
+enable-banking-mcp register
 ```
 
-This will:
-- Generate a new RSA key pair
-- Register a new application with Enable Banking
-- Save credentials to `.env`
-
-When prompted for the redirect URL, use: `https://localhost:8080/callback`
+This generates an RSA key pair locally, registers the app via API, and saves credentials to `.env` automatically.
 
 ### 2. Whitelist Your IBAN
 
