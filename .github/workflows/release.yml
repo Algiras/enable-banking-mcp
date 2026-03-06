@@ -17,19 +17,28 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # ── Linux ──────────────────────────────────────────────────────────
           - target: x86_64-unknown-linux-gnu
-            os: ubuntu-latest
+            os: ubuntu-22.04
             artifact: enable-banking-mcp-linux-x86_64
+
           - target: aarch64-unknown-linux-gnu
-            os: ubuntu-latest
+            os: ubuntu-22.04
             artifact: enable-banking-mcp-linux-aarch64
             cross: true
-          - target: x86_64-apple-darwin
-            os: macos-latest
-            artifact: enable-banking-mcp-macos-x86_64
+
+          # ── macOS ──────────────────────────────────────────────────────────
+          # macos-14 runner is Apple Silicon (arm64) — native aarch64 build
           - target: aarch64-apple-darwin
-            os: macos-latest
+            os: macos-14
             artifact: enable-banking-mcp-macos-aarch64
+
+          # macos-13 runner is Intel — native x86_64 build
+          - target: x86_64-apple-darwin
+            os: macos-13
+            artifact: enable-banking-mcp-macos-x86_64
+
+          # ── Windows ────────────────────────────────────────────────────────
           - target: x86_64-pc-windows-msvc
             os: windows-latest
             artifact: enable-banking-mcp-windows-x86_64.exe
@@ -42,14 +51,38 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
-      - name: Install cross (for cross-compilation)
-        if: matrix.cross
-        run: cargo install cross --git https://github.com/cross-rs/cross
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
 
-      - name: Install Linux dependencies
+      # ── Linux native deps (cmake for aws-lc-rs, nasm for crypto, OpenSSL) ─
+      - name: Install Linux build dependencies
         if: runner.os == 'Linux' && !matrix.cross
-        run: sudo apt-get update && sudo apt-get install -y pkg-config libssl-dev
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends \
+            pkg-config libssl-dev cmake nasm golang-go
 
+      # ── macOS (cmake via homebrew; nasm and cmake usually present) ─────────
+      - name: Install macOS build dependencies
+        if: runner.os == 'macOS'
+        run: brew install cmake nasm
+
+      # ── Windows (nasm for aws-lc-rs, choco is available on windows-latest) ─
+      - name: Install Windows build dependencies
+        if: runner.os == 'Windows'
+        run: choco install nasm cmake --installargs 'ADD_CMAKE_TO_PATH=System' -y
+        shell: pwsh
+
+      # ── cross for Linux aarch64 ────────────────────────────────────────────
+      - name: Install cross
+        if: matrix.cross
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cross
+
+      # ── Build ──────────────────────────────────────────────────────────────
       - name: Build (native)
         if: "!matrix.cross"
         run: cargo build --release --target ${{ matrix.target }}
@@ -58,6 +91,7 @@ jobs:
         if: matrix.cross
         run: cross build --release --target ${{ matrix.target }}
 
+      # ── Collect artifact ───────────────────────────────────────────────────
       - name: Rename binary (Unix)
         if: runner.os != 'Windows'
         run: |
@@ -66,6 +100,7 @@ jobs:
 
       - name: Rename binary (Windows)
         if: runner.os == 'Windows'
+        shell: pwsh
         run: copy target\${{ matrix.target }}\release\enable-banking-mcp.exe ${{ matrix.artifact }}
 
       - name: Upload artifact
@@ -73,6 +108,7 @@ jobs:
         with:
           name: ${{ matrix.artifact }}
           path: ${{ matrix.artifact }}
+          if-no-files-found: error
 
   release:
     name: Create GitHub Release
@@ -89,27 +125,25 @@ jobs:
           path: artifacts
           merge-multiple: true
 
-      - name: Generate checksums
+      - name: Generate SHA-256 checksums
         run: |
           cd artifacts
-          sha256sum * > checksums.txt
-          cat checksums.txt
+          sha256sum * | tee checksums.txt
 
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            artifacts/*
+          files: artifacts/*
           generate_release_notes: true
           body: |
             ## Install
 
-            **macOS / Linux (curl installer):**
+            **macOS / Linux — one-liner:**
             ```sh
             curl -fsSL https://raw.githubusercontent.com/Algiras/enable-banking-mcp/main/install.sh | sh
             ```
 
-            **Manual download:** Pick the binary for your platform below.
+            **Manual download:** pick the binary for your platform, then run `install`:
 
             | Platform | Binary |
             |----------|--------|
@@ -119,8 +153,13 @@ jobs:
             | Linux ARM64 | `enable-banking-mcp-linux-aarch64` |
             | Windows x86_64 | `enable-banking-mcp-windows-x86_64.exe` |
 
-            After downloading, run:
             ```sh
+            # Unix
             chmod +x enable-banking-mcp-*
-            ./enable-banking-mcp-* install
+            ./enable-banking-mcp-macos-aarch64 install
+
+            # Windows (PowerShell)
+            .\enable-banking-mcp-windows-x86_64.exe install
             ```
+
+            Verify your download with `checksums.txt`.

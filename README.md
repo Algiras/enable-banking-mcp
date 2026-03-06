@@ -1,5 +1,6 @@
 # Enable Banking MCP Server
 
+[![CI](https://github.com/Algiras/enable-banking-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/Algiras/enable-banking-mcp/actions/workflows/ci.yml)
 [![Release](https://github.com/Algiras/enable-banking-mcp/actions/workflows/release.yml/badge.svg)](https://github.com/Algiras/enable-banking-mcp/actions/workflows/release.yml)
 
 An [MCP (Model Context Protocol)](https://modelcontextprotocol.io) server for the [Enable Banking API](https://enablebanking.com), written in Rust. Gives AI assistants (Claude, Copilot, etc.) direct access to Open Banking data across hundreds of European banks.
