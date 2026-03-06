@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Account Balances</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --border: #30363d;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --green: #3fb950;
+      --red: #f85149;
+      --blue: #58a6ff;
+      --gold: #d29922;
+    }
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg: #ffffff;
+        --surface: #f6f8fa;
+        --border: #d0d7de;
+        --text: #1f2328;
+        --muted: #636c76;
+        --green: #1a7f37;
+        --red: #cf222e;
+        --blue: #0969da;
+        --gold: #9a6700;
+      }
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      padding: 16px;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+
+    h2 {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: .08em;
+    }
+
+    .badge {
+      font-size: 11px;
+      background: rgba(88, 166, 255, .15);
+      color: var(--blue);
+      border-radius: 100px;
+      padding: 3px 10px;
+      font-weight: 600;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 12px;
+    }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 18px;
+      position: relative;
+      overflow: hidden;
+      transition: transform .15s, box-shadow .15s;
+    }
+
+    .card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, .4);
+    }
+
+    .card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 3px;
+      background: var(--accent, var(--blue));
+    }
+
+    .bank {
+      font-size: 11px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      margin-bottom: 4px;
+    }
+
+    .account-name {
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 2px;
+    }
+
+    .iban {
+      font-size: 11px;
+      color: var(--muted);
+      font-family: monospace;
+      margin-bottom: 16px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .amount {
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: -.02em;
+    }
+
+    .type-badge {
+      display: inline-block;
+      font-size: 10px;
+      padding: 2px 8px;
+      border-radius: 100px;
+      font-weight: 600;
+      margin-top: 8px;
+      background: rgba(255, 255, 255, .07);
+      color: var(--muted);
+    }
+
+    .expiry {
+      font-size: 11px;
+      color: var(--muted);
+      margin-top: 6px;
+    }
+
+    .expiry.near {
+      color: var(--gold);
+    }
+
+    .empty {
+      text-align: center;
+      color: var(--muted);
+      padding: 48px 0;
+      font-size: 14px;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="header">
+    <h2>Account Balances</h2>
+    <span class="badge" id="badge" style="display:none"></span>
+  </div>
+  <div class="grid" id="grid">
+    <div class="empty">Loading…</div>
+  </div>
+
+  <script>
+    const COLORS = ['var(--blue)', 'var(--green)', 'var(--gold)', '#bc8cff', '#ff7b72'];
+    function fmt(n, cur) {
+      return new Intl.NumberFormat(undefined, { style: 'currency', currency: cur || 'EUR', maximumFractionDigits: 2 }).format(n);
+    }
+    function daysUntil(dateStr) {
+      const d = new Date(dateStr);
+      return Math.round((d - Date.now()) / 86400000);
+    }
+    function render(data) {
+      // data may be: array of balances, {balances:[], session?:{}} or single balance
+      const balances = Array.isArray(data) ? data : (data.balances || [data]);
+      const session = data.session || null;
+
+      const grid = document.getElementById('grid');
+      const badge = document.getElementById('badge');
+      if (balances.length > 0) { badge.style.display = ''; badge.textContent = `${balances.length} account${balances.length > 1 ? 's' : ''}`; }
+
+      if (!balances.length) { grid.innerHTML = '<div class="empty">No balances found.</div>'; return; }
+      grid.innerHTML = balances.map((b, i) => {
+        const amount = parseFloat(b.balance_amount?.amount ?? b.amount ?? 0);
+        const cur = b.balance_amount?.currency ?? b.currency ?? 'EUR';
+        const color = COLORS[i % COLORS.length];
+        const positive = amount >= 0;
+        const expiry = session?.valid_until ? daysUntil(session.valid_until) : null;
+        const expiryHtml = expiry !== null
+          ? `<div class="expiry ${expiry < 7 ? 'near' : ''}">Session expires in ${expiry}d</div>` : '';
+        return `<div class="card" style="--accent: ${color}">
+      <div class="bank">${b.bank_name ?? 'Bank'}</div>
+      <div class="account-name">${b.account_name ?? b.name ?? 'Account'}</div>
+      <div class="iban" title="${b.account_id ?? ''}">${b.account_id ?? '—'}</div>
+      <div class="amount" style="color:${positive ? 'var(--green)' : 'var(--red)'}">${fmt(amount, cur)}</div>
+      <span class="type-badge">${b.balance_type ?? b.type ?? 'CLBD'}</span>
+      ${expiryHtml}
+    </div>`;
+      }).join('');
+    }
+
+    let dataReceived = false;
+    window.renderData = function(json) {
+      dataReceived = true;
+      try { render(typeof json === 'string' ? JSON.parse(json) : json); } catch(e) { console.error(e); }
+    };
+
+    window.addEventListener('message', function(event) {
+      const msg = event.data;
+      if (!msg || typeof msg !== 'object') return;
+      // Response to our ui/initialize request
+      if (msg.jsonrpc === '2.0' && msg.id === 1 && 'result' in msg) {
+        const cs = msg.result?.colorScheme ?? msg.result?.theme;
+        if (cs === 'light') document.documentElement.setAttribute('data-theme', 'light');
+        try { window.parent.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/initialized' }, '*'); } catch(_) {}
+        return;
+      }
+      // Tool result notification — contains the balance data
+      if (msg.jsonrpc === '2.0' && msg.method === 'ui/notifications/tool-result') {
+        try {
+          const structured = msg.params?.structuredContent;
+          const text = msg.params?.content?.[0]?.text;
+          const data = structured || (text ? JSON.parse(text) : null);
+          if (data) { dataReceived = true; window.renderData(data); }
+        } catch(e) { console.error('tool-result parse error', e); }
+        return;
+      }
+    });
+
+    setTimeout(() => {
+      if (!dataReceived) {
+        const grid = document.getElementById('grid');
+        grid.innerHTML = '<div class="empty" style="line-height:1.8">No data received.<br><span style="font-size:11px;color:var(--muted)">Call <code style="color:var(--blue)">get_account_balances</code> with a session_id to populate this view.<br>Or run <code style="color:var(--blue)">window.renderData(jsonString)</code> in the console.</span></div>';
+      }
+    }, 5000);
+
+    // Send ui/initialize as proper JSON-RPC request (SEP-1865 spec)
+    try {
+      window.parent.postMessage({
+        jsonrpc: '2.0', id: 1, method: 'ui/initialize',
+        params: {
+          protocolVersion: '2026-01-26',
+          appCapabilities: { availableDisplayModes: ['inline'] },
+          clientInfo: { name: 'balance-view', version: '1.0.0' }
+        }
+      }, '*');
+    } catch(_) {}
+
+  </script>
+</body>
+
+</html>

@@ -1,0 +1,10 @@
+/target
+.env.production
+.env
+.superset/
+
+# Dev-only UI preview (not embedded in binary)
+src/ui/_preview.html
+
+# VS Code workspace config (credentials, personal tasks)
+.vscode/

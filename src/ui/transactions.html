@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Transactions</title>
+    <style>
+        :root {
+            --bg: #0d1117;
+            --surface: #161b22;
+            --border: #30363d;
+            --text: #e6edf3;
+            --muted: #8b949e;
+            --green: #3fb950;
+            --red: #f85149;
+            --blue: #58a6ff;
+        }
+        @media (prefers-color-scheme: light) {
+            :root {
+                --bg: #ffffff;
+                --surface: #f6f8fa;
+                --border: #d0d7de;
+                --text: #1f2328;
+                --muted: #636c76;
+                --green: #1a7f37;
+                --red: #cf222e;
+                --blue: #0969da;
+            }
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            padding: 16px;
+        }
+
+        .toolbar {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        h2 {
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: .08em;
+            margin-right: auto;
+        }
+
+        .info {
+            font-size: 11px;
+            color: var(--muted);
+            white-space: nowrap;
+        }
+
+        .info .pages {
+            color: var(--blue);
+        }
+
+        input[type=search],
+        select {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text);
+            padding: 7px 11px;
+            font-size: 12px;
+            outline: none;
+        }
+
+        input[type=search] {
+            flex: 1;
+            min-width: 120px;
+        }
+
+        input[type=search]::placeholder {
+            color: var(--muted);
+        }
+
+        input[type=search]:focus,
+        select:focus {
+            border-color: var(--blue);
+        }
+
+        select option {
+            background: var(--surface);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+
+        thead th {
+            color: var(--muted);
+            font-weight: 600;
+            text-align: left;
+            padding: 8px 10px;
+            border-bottom: 1px solid var(--border);
+            cursor: pointer;
+            user-select: none;
+            font-size: 12px;
+        }
+
+        thead th:hover {
+            color: var(--text);
+        }
+
+        tbody tr {
+            border-bottom: 1px solid var(--border);
+            transition: background .1s;
+        }
+
+        tbody tr:hover {
+            background: var(--surface);
+        }
+
+        td {
+            padding: 10px;
+            vertical-align: middle;
+        }
+
+        .amount {
+            font-variant-numeric: tabular-nums;
+            font-weight: 600;
+            text-align: right;
+        }
+
+        .credit {
+            color: var(--green);
+        }
+
+        .debit {
+            color: var(--red);
+        }
+
+        .date {
+            color: var(--muted);
+            font-size: 12px;
+            white-space: nowrap;
+        }
+
+        .merchant {
+            font-weight: 500;
+        }
+
+        .ref {
+            color: var(--muted);
+            font-size: 11px;
+            font-family: monospace;
+        }
+
+        .status {
+            display: inline-block;
+            font-size: 10px;
+            padding: 2px 7px;
+            border-radius: 100px;
+            font-weight: 600;
+        }
+
+        .status-BOOK {
+            background: rgba(63, 185, 80, .15);
+            color: var(--green);
+        }
+
+        .status-PDNG {
+            background: rgba(210, 153, 34, .15);
+            color: #d29922;
+        }
+
+        .empty {
+            text-align: center;
+            color: var(--muted);
+            padding: 40px 0;
+        }
+
+        .pagination-banner {
+            background: rgba(88, 166, 255, .08);
+            border: 1px solid rgba(88, 166, 255, .2);
+            border-radius: 8px;
+            padding: 8px 12px;
+            font-size: 12px;
+            color: var(--blue);
+            margin-bottom: 12px;
+            display: none;
+        }
+
+        .pagination {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-top: 12px;
+            gap: 8px;
+            flex-wrap: wrap;
+        }
+        .pagination-pages {
+            display: flex;
+            gap: 4px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .pg-btn {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            color: var(--text);
+            cursor: pointer;
+            font-size: 12px;
+            padding: 5px 10px;
+            line-height: 1;
+            transition: background .1s, border-color .1s;
+        }
+        .pg-btn:hover:not(:disabled) {
+            border-color: var(--blue);
+            color: var(--blue);
+        }
+        .pg-btn.active {
+            background: var(--blue);
+            border-color: var(--blue);
+            color: #fff;
+            font-weight: 600;
+        }
+        .pg-btn:disabled {
+            opacity: .35;
+            cursor: default;
+        }
+        .pg-info {
+            font-size: 12px;
+            color: var(--muted);
+            white-space: nowrap;
+        }
+        .pg-size {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 12px;
+            color: var(--muted);
+        }
+    </style>
+</head>
+
+<body>
+    <div class="toolbar">
+        <h2>Transactions</h2>
+        <span class="info" id="info"></span>
+    </div>
+    <div class="pagination-banner" id="pgbanner"></div>
+    <div class="toolbar">
+        <input type="search" id="search" placeholder="Search transactions…" oninput="currentPage=1;display()" />
+        <select id="statusFilter" onchange="currentPage=1;display()">
+            <option value="">All statuses</option>
+            <option value="BOOK">Booked</option>
+            <option value="PDNG">Pending</option>
+        </select>
+    </div>
+    <table>
+        <thead>
+            <tr>
+                <th onclick="sortBy('date')">Date ↕</th>
+                <th onclick="sortBy('merchant')">Merchant / Description ↕</th>
+                <th onclick="sortBy('amount')" style="text-align:right">Amount ↕</th>
+                <th>Status</th>
+            </tr>
+        </thead>
+        <tbody id="tbody"></tbody>
+    </table>
+    <div class="pagination" id="pagination" style="display:none">
+        <div class="pg-size">
+            Rows:
+            <select id="pageSize" onchange="setPage(1)" style="background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:4px 6px;font-size:12px;outline:none">
+                <option value="25" selected>25</option>
+                <option value="50">50</option>
+                <option value="100">100</option>
+            </select>
+        </div>
+        <div class="pagination-pages" id="pg-pages"></div>
+        <div class="pg-info" id="pg-info"></div>
+    </div>
+
+    <script>
+        let rows = [];
+        let sortKey = 'date', sortDir = -1;
+        let currentPage = 1;
+        let lastSorted = [];
+
+        function fmt(amount, cur) {
+            return new Intl.NumberFormat(undefined, { style: 'currency', currency: cur || 'EUR' }).format(amount);
+        }
+
+        function render(data) {
+            const txns = data.transactions ?? (Array.isArray(data) ? data : [data]);
+            const pages = data.pages_fetched;
+            rows = txns;
+
+            if (pages && pages > 1) {
+                const banner = document.getElementById('pgbanner');
+                banner.style.display = '';
+                banner.textContent = `ℹ Fetched ${txns.length} transactions across ${pages} pages`;
+            }
+
+            currentPage = 1;
+            display();
+        }
+
+        function display() {
+            const q = document.getElementById('search').value.toLowerCase();
+            const statusF = document.getElementById('statusFilter').value;
+
+            let filtered = rows.filter(r => {
+                if (statusF && (r.status ?? 'BOOK') !== statusF) return false;
+                if (q) return JSON.stringify(r).toLowerCase().includes(q);
+                return true;
+            });
+
+            lastSorted = [...filtered].sort((a, b) => {
+                let av, bv;
+                if (sortKey === 'amount') {
+                    av = parseFloat(a.transaction_amount?.amount ?? a.amount ?? 0);
+                    bv = parseFloat(b.transaction_amount?.amount ?? b.amount ?? 0);
+                } else if (sortKey === 'merchant') {
+                    av = a.remittance_information?.[0] ?? '';
+                    bv = b.remittance_information?.[0] ?? '';
+                } else {
+                    av = a.booking_date ?? '';
+                    bv = b.booking_date ?? '';
+                }
+                return av < bv ? sortDir : av > bv ? -sortDir : 0;
+            });
+
+            // Clamp page after filter change
+            const ps = parseInt(document.getElementById('pageSize').value);
+            const totalPages = Math.max(1, Math.ceil(lastSorted.length / ps));
+            if (currentPage > totalPages) currentPage = totalPages;
+
+            renderPage(ps, totalPages);
+        }
+
+        function renderPage(ps, totalPages) {
+            const start = (currentPage - 1) * ps;
+            const page = lastSorted.slice(start, start + ps);
+
+            document.getElementById('info').innerHTML =
+                `<span>${lastSorted.length} of ${rows.length} transactions</span>`;
+
+            const tbody = document.getElementById('tbody');
+            if (!lastSorted.length) {
+                tbody.innerHTML = '<tr><td colspan="4" class="empty">No transactions found.</td></tr>';
+                document.getElementById('pagination').style.display = 'none';
+                return;
+            }
+
+            tbody.innerHTML = page.map(t => {
+                const amt = parseFloat(t.transaction_amount?.amount ?? t.amount ?? 0);
+                const cur = t.transaction_amount?.currency ?? t.currency ?? 'EUR';
+                const credit = t.credit_debit_indicator === 'CRDT' || amt >= 0;
+                const merchant = t.remittance_information?.[0] ?? t.creditor?.name ?? t.debtor?.name ?? '—';
+                const status = t.status ?? 'BOOK';
+                const date = (t.booking_date ?? t.value_date ?? '').substring(0, 10);
+                return `<tr>
+                    <td class="date">${date}</td>
+                    <td><div class="merchant">${merchant}</div><div class="ref">${(t.transaction_id ?? '').substring(0, 16)}</div></td>
+                    <td class="amount ${credit ? 'credit' : 'debit'}">${credit ? '+' : ''}${fmt(Math.abs(amt), cur)}</td>
+                    <td><span class="status status-${status}">${status}</span></td>
+                </tr>`;
+            }).join('');
+
+            // Pagination bar
+            const pgEl = document.getElementById('pagination');
+            pgEl.style.display = 'flex';
+
+            const pagesEl = document.getElementById('pg-pages');
+            const infoEl = document.getElementById('pg-info');
+            infoEl.textContent = `${start + 1}–${Math.min(start + ps, lastSorted.length)} of ${lastSorted.length}`;
+
+            // Build page buttons: always show first, last, current ±1, with ellipsis
+            const btns = [];
+            btns.push(`<button class="pg-btn" onclick="setPage(${currentPage-1})" ${currentPage===1?'disabled':''}>‹</button>`);
+            const pageNums = new Set([1, totalPages, currentPage, currentPage-1, currentPage+1].filter(p => p >= 1 && p <= totalPages));
+            let last = 0;
+            for (const p of [...pageNums].sort((a,b)=>a-b)) {
+                if (last && p - last > 1) btns.push('<span style="color:var(--muted);padding:0 4px">…</span>');
+                btns.push(`<button class="pg-btn${p===currentPage?' active':''}" onclick="setPage(${p})">${p}</button>`);
+                last = p;
+            }
+            btns.push(`<button class="pg-btn" onclick="setPage(${currentPage+1})" ${currentPage===totalPages?'disabled':''}>›</button>`);
+            pagesEl.innerHTML = btns.join('');
+        }
+
+        function setPage(p) {
+            const ps = parseInt(document.getElementById('pageSize').value);
+            const totalPages = Math.max(1, Math.ceil(lastSorted.length / ps));
+            currentPage = Math.max(1, Math.min(p, totalPages));
+            renderPage(ps, totalPages);
+        }
+
+        function sortBy(k) {
+            if (sortKey === k) sortDir *= -1; else { sortKey = k; sortDir = -1; }
+            currentPage = 1;
+            display();
+        }
+
+        let dataReceived = false;
+        window.renderData = function(json) {
+            dataReceived = true;
+            try { render(typeof json === 'string' ? JSON.parse(json) : json); } catch(e) { console.error(e); }
+        };
+
+        window.addEventListener('message', function(event) {
+            const msg = event.data;
+            if (!msg || typeof msg !== 'object') return;
+            // Response to our ui/initialize request
+            if (msg.jsonrpc === '2.0' && msg.id === 1 && 'result' in msg) {
+                const cs = msg.result?.colorScheme ?? msg.result?.theme;
+                if (cs === 'light') document.documentElement.setAttribute('data-theme', 'light');
+                try { window.parent.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/initialized' }, '*'); } catch(_) {}
+                return;
+            }
+            // Tool result notification — contains transaction data
+            if (msg.jsonrpc === '2.0' && msg.method === 'ui/notifications/tool-result') {
+                try {
+                    const structured = msg.params?.structuredContent;
+                    const text = msg.params?.content?.[0]?.text;
+                    const data = structured || (text ? JSON.parse(text) : null);
+                    if (data) { dataReceived = true; window.renderData(data); }
+                } catch(e) { console.error('tool-result parse error', e); }
+                return;
+            }
+        });
+
+        setTimeout(() => {
+            if (!dataReceived) {
+                document.getElementById('tbody').innerHTML = `<tr><td colspan="4" style="text-align:center;padding:24px;color:var(--muted)">No data received.<br><span style="font-size:11px">Call <code style="color:#58a6ff">get_account_transactions</code> with a session_id to populate this view.</span></td></tr>`;
+            }
+        }, 5000);
+
+        // Send ui/initialize as proper JSON-RPC request (SEP-1865 spec)
+    try {
+      window.parent.postMessage({
+        jsonrpc: '2.0', id: 1, method: 'ui/initialize',
+        params: {
+          protocolVersion: '2026-01-26',
+          appCapabilities: { availableDisplayModes: ['inline'] },
+          clientInfo: { name: 'transactions-view', version: '2.0.0' }
+        }
+      }, '*');
+    } catch(_) {}
+
+    </script>
+</body>
+
+</html>

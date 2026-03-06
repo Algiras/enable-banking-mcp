@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Account List</title>
+<style>
+  :root {
+    --bg: #0d1117; --surface: #161b22; --border: #30363d;
+    --text: #e6edf3; --muted: #8b949e;
+    --green: #3fb950; --red: #f85149; --blue: #58a6ff;
+    --gold: #d29922; --card-bg: #1c2128;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #ffffff; --surface: #f6f8fa; --border: #d0d7de;
+      --text: #1f2328; --muted: #636c76;
+      --green: #1a7f37; --red: #cf222e; --blue: #0969da;
+      --gold: #9a6700; --card-bg: #ffffff;
+    }
+  }
+  [data-theme="light"] {
+    --bg: #ffffff; --surface: #f6f8fa; --border: #d0d7de;
+    --text: #1f2328; --muted: #636c76;
+    --green: #1a7f37; --red: #cf222e; --blue: #0969da;
+    --gold: #9a6700; --card-bg: #ffffff;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    font-size: 13px; line-height: 1.5; padding: 16px;
+  }
+  .header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--border);
+    flex-wrap: wrap; gap: 8px;
+  }
+  .header h1 { font-size: 15px; font-weight: 600; }
+  .session-bar {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 7px; padding: 10px 14px; margin-bottom: 14px;
+    display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px;
+  }
+  .session-label { font-size: 12px; color: var(--muted); }
+  .session-id-mono {
+    font-family: ui-monospace, monospace; font-size: 11px;
+    color: var(--blue); cursor: pointer; user-select: all;
+  }
+  .status-pill {
+    font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 10px;
+    letter-spacing: 0.04em;
+  }
+  .status-authorized { background: color-mix(in srgb, var(--green) 15%, transparent); color: var(--green); border: 1px solid color-mix(in srgb, var(--green) 30%, transparent); }
+  .status-other      { background: color-mix(in srgb, var(--gold)  15%, transparent); color: var(--gold);  border: 1px solid color-mix(in srgb, var(--gold)  30%, transparent); }
+  .section-head {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 8px;
+  }
+  .section-head h2 { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+  .count-badge {
+    font-size: 11px; color: var(--muted);
+    background: var(--surface); border: 1px solid var(--border);
+    padding: 1px 7px; border-radius: 10px;
+  }
+  .account-list { display: flex; flex-direction: column; gap: 6px; }
+  .account-row {
+    background: var(--card-bg); border: 1px solid var(--border);
+    border-radius: 7px; padding: 10px 14px;
+    display: grid; grid-template-columns: 28px 1fr auto;
+    align-items: center; gap: 10px;
+    transition: border-color 0.15s;
+  }
+  .account-row:hover { border-color: var(--blue); }
+  .acct-index {
+    width: 24px; height: 24px; border-radius: 50%;
+    background: color-mix(in srgb, var(--blue) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--blue) 25%, transparent);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; font-weight: 700; color: var(--blue); flex-shrink: 0;
+  }
+  .acct-uid {
+    font-family: ui-monospace, monospace; font-size: 11px;
+    color: var(--text); user-select: all; cursor: pointer;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .acct-uid:hover { color: var(--blue); }
+  .hash-tag {
+    font-size: 10px; color: var(--muted); white-space: nowrap;
+    background: var(--bg); border: 1px solid var(--border);
+    padding: 1px 6px; border-radius: 4px;
+    font-family: ui-monospace, monospace;
+  }
+  .hint {
+    margin-top: 14px; padding: 10px 14px;
+    background: color-mix(in srgb, var(--blue) 8%, transparent);
+    border: 1px solid color-mix(in srgb, var(--blue) 20%, transparent);
+    border-radius: 7px; font-size: 11px; color: var(--muted);
+  }
+  .hint code { color: var(--blue); font-family: ui-monospace, monospace; font-size: 10.5px; }
+  .empty-state { text-align: center; padding: 48px 16px; color: var(--muted); }
+  .loading { color: var(--muted); padding: 32px; text-align: center; }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>Accounts</h1>
+  <span class="count-badge" id="count">—</span>
+</div>
+<div id="root"><div class="loading">Waiting for data…</div></div>
+
+<script>
+let dataReceived = false;
+
+window.renderData = function(data) {
+  const root = document.getElementById('root');
+  const sessionId = data.session_id || '—';
+  const status = (data.session_status || 'UNKNOWN').toUpperCase();
+  const accounts = data.accounts || [];
+  const accountsData = data.accounts_data || [];
+  const count = data.account_count != null ? data.account_count : accounts.length;
+
+  document.getElementById('count').textContent = `${count} account${count !== 1 ? 's' : ''}`;
+
+  const statusCls = status === 'AUTHORIZED' ? 'status-authorized' : 'status-other';
+
+  // Build account rows — merge UID from accounts[] with hash from accounts_data[]
+  const rows = accounts.map((uid, i) => {
+    const uidStr = typeof uid === 'string' ? uid : (uid.uid || JSON.stringify(uid));
+    const data = accountsData.find(d => d.uid === uidStr);
+    const hash = data?.identification_hash;
+    const shortHash = hash ? hash.slice(0, 16) + '…' : '';
+    return `<div class="account-row">
+      <div class="acct-index">${i + 1}</div>
+      <div class="acct-uid" title="${uidStr}">${uidStr}</div>
+      ${shortHash ? `<span class="hash-tag" title="${hash}">${shortHash}</span>` : ''}
+    </div>`;
+  }).join('');
+
+  const hint = accounts.length > 0 ? `<div class="hint">
+    Use <code>get_account_balances</code> or <code>get_account_transactions</code> with an account ID above and <code>session_id: "${sessionId}"</code>
+  </div>` : '';
+
+  const noAccounts = accounts.length === 0
+    ? '<div class="empty-state">No accounts found for this session.</div>'
+    : '';
+
+  root.innerHTML = `
+    <div class="session-bar">
+      <div>
+        <div class="session-label">Session</div>
+        <div class="session-id-mono" title="Click to select">${sessionId}</div>
+      </div>
+      <span class="status-pill ${statusCls}">${status}</span>
+    </div>
+    ${accounts.length > 0 ? `
+      <div class="section-head">
+        <h2>Accounts</h2>
+        <span class="count-badge">${count}</span>
+      </div>
+      <div class="account-list">${rows}</div>
+    ` : noAccounts}
+    ${hint}
+  `;
+};
+
+window.addEventListener('message', function(event) {
+  const msg = event.data;
+  if (!msg || typeof msg !== 'object') return;
+  if (msg.jsonrpc === '2.0' && msg.id === 1 && 'result' in msg) {
+    const cs = msg.result?.colorScheme ?? msg.result?.theme;
+    if (cs === 'light') document.documentElement.setAttribute('data-theme', 'light');
+    try { window.parent.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/initialized' }, '*'); } catch(_) {}
+    return;
+  }
+  if (msg.jsonrpc === '2.0' && msg.method === 'ui/notifications/tool-result') {
+    try {
+      const d = msg.params?.structuredContent ||
+        (msg.params?.content?.[0]?.text ? JSON.parse(msg.params.content[0].text) : null);
+      if (d) { dataReceived = true; window.renderData(d); }
+    } catch(e) { console.error(e); }
+    return;
+  }
+});
+
+try {
+  window.parent.postMessage({
+    jsonrpc: '2.0', id: 1, method: 'ui/initialize',
+    params: { protocolVersion: '2026-01-26',
+      appCapabilities: { availableDisplayModes: ['inline'] },
+      clientInfo: { name: 'accounts-list', version: '1.0.0' } }
+  }, '*');
+} catch(_) {}
+</script>
+</body>
+</html>

@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Payment Status</title>
+<style>
+  :root {
+    --bg: #0d1117; --surface: #161b22; --border: #30363d;
+    --text: #e6edf3; --muted: #8b949e;
+    --green: #3fb950; --red: #f85149; --blue: #58a6ff;
+    --gold: #d29922; --purple: #bc8cff; --card-bg: #1c2128;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #ffffff; --surface: #f6f8fa; --border: #d0d7de;
+      --text: #1f2328; --muted: #636c76;
+      --green: #1a7f37; --red: #cf222e; --blue: #0969da;
+      --gold: #9a6700; --purple: #8250df; --card-bg: #ffffff;
+    }
+  }
+  [data-theme="light"] {
+    --bg: #ffffff; --surface: #f6f8fa; --border: #d0d7de;
+    --text: #1f2328; --muted: #636c76;
+    --green: #1a7f37; --red: #cf222e; --blue: #0969da;
+    --gold: #9a6700; --purple: #8250df; --card-bg: #ffffff;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    font-size: 13px; line-height: 1.5; padding: 16px; max-width: 560px; margin: 0 auto;
+  }
+  /* ── Status Hero ── */
+  .status-hero {
+    text-align: center; padding: 20px 16px 16px;
+    border-radius: 10px; margin-bottom: 16px;
+    border: 1px solid var(--border);
+  }
+  .status-icon { font-size: 36px; line-height: 1; margin-bottom: 8px; }
+  .status-text { font-size: 18px; font-weight: 700; letter-spacing: 0.04em; }
+  .status-sub  { font-size: 11px; color: var(--muted); margin-top: 4px; }
+  .hero-pending  { background: color-mix(in srgb, var(--gold)   8%, transparent); border-color: color-mix(in srgb, var(--gold)   25%, transparent); }
+  .hero-authorized { background: color-mix(in srgb, var(--blue)  8%, transparent); border-color: color-mix(in srgb, var(--blue)  25%, transparent); }
+  .hero-executed { background: color-mix(in srgb, var(--green)  8%, transparent); border-color: color-mix(in srgb, var(--green) 25%, transparent); }
+  .hero-rejected { background: color-mix(in srgb, var(--red)    8%, transparent); border-color: color-mix(in srgb, var(--red)   25%, transparent); }
+  .hero-default  { background: color-mix(in srgb, var(--muted)  8%, transparent); border-color: var(--border); }
+  .txt-pending   { color: var(--gold); }
+  .txt-authorized { color: var(--blue); }
+  .txt-executed  { color: var(--green); }
+  .txt-rejected  { color: var(--red); }
+  .txt-default   { color: var(--muted); }
+  /* ── Amount block ── */
+  .amount-block {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; padding: 14px 16px; margin-bottom: 14px;
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  }
+  .amount-num { font-size: 26px; font-weight: 700; color: var(--text); white-space: nowrap; }
+  .amount-curr { font-size: 14px; color: var(--muted); margin-left: 4px; }
+  .creditor-box { text-align: right; }
+  .creditor-name { font-size: 13px; font-weight: 600; color: var(--text); }
+  .creditor-iban {
+    font-family: ui-monospace, monospace; font-size: 10px;
+    color: var(--muted); margin-top: 2px; user-select: all;
+  }
+  /* ── Timeline ── */
+  .timeline {
+    display: flex; align-items: flex-start; justify-content: center;
+    gap: 0; margin-bottom: 14px;
+  }
+  .step { display: flex; flex-direction: column; align-items: center; flex: 1; }
+  .step-dot {
+    width: 22px; height: 22px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 11px; font-weight: 700; flex-shrink: 0;
+    position: relative; z-index: 1;
+  }
+  .step-dot.done  { background: var(--green); color: #fff; }
+  .step-dot.active{ background: var(--blue);  color: #fff; box-shadow: 0 0 0 3px color-mix(in srgb, var(--blue) 25%, transparent); }
+  .step-dot.fail  { background: var(--red);   color: #fff; }
+  .step-dot.wait  { background: var(--border); color: var(--muted); border: 2px solid var(--border); }
+  .step-label { font-size: 9px; color: var(--muted); margin-top: 5px; text-align: center; letter-spacing: 0.04em; text-transform: uppercase; }
+  .step-label.active { color: var(--blue); font-weight: 600; }
+  .step-label.done   { color: var(--green); }
+  .step-label.fail   { color: var(--red); font-weight: 600; }
+  .step-connector {
+    flex: 0 0 40px; height: 2px; background: var(--border);
+    margin-top: 10px; align-self: flex-start;
+  }
+  .step-connector.done { background: var(--green); }
+  /* ── Details ── */
+  .details-grid {
+    background: var(--card-bg); border: 1px solid var(--border);
+    border-radius: 8px; overflow: hidden; margin-bottom: 12px;
+  }
+  .detail-row {
+    display: grid; grid-template-columns: 120px 1fr;
+    border-bottom: 1px solid var(--border); min-height: 36px;
+  }
+  .detail-row:last-child { border-bottom: none; }
+  .detail-key {
+    padding: 8px 12px; font-size: 11px; color: var(--muted);
+    background: var(--surface); display: flex; align-items: center;
+    font-weight: 500;
+  }
+  .detail-val {
+    padding: 8px 12px; font-size: 12px; color: var(--text);
+    display: flex; align-items: center; word-break: break-all;
+  }
+  .detail-val.mono { font-family: ui-monospace, monospace; font-size: 10.5px; user-select: all; }
+  /* ── Redirect link ── */
+  .redirect-box {
+    background: color-mix(in srgb, var(--blue) 8%, transparent);
+    border: 1px solid color-mix(in srgb, var(--blue) 20%, transparent);
+    border-radius: 7px; padding: 10px 14px; margin-bottom: 12px;
+    font-size: 11px;
+  }
+  .redirect-label { color: var(--muted); margin-bottom: 4px; font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; }
+  .redirect-link { color: var(--blue); word-break: break-all; text-decoration: none; }
+  .redirect-link:hover { text-decoration: underline; }
+  /* ── Payment ID footer ── */
+  .pid-box {
+    font-family: ui-monospace, monospace; font-size: 10px;
+    color: var(--muted); padding: 8px 12px;
+    border: 1px solid var(--border); border-radius: 6px;
+    cursor: pointer; user-select: all; transition: border-color 0.15s, color 0.15s;
+    word-break: break-all;
+  }
+  .pid-box:hover { border-color: var(--blue); color: var(--text); }
+  .pid-label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 2px; }
+  .loading { color: var(--muted); padding: 32px; text-align: center; }
+</style>
+</head>
+<body>
+<div id="root"><div class="loading">Waiting for data…</div></div>
+
+<script>
+let dataReceived = false;
+
+const STATUS_CONFIG = {
+  PENDING:    { hero: 'hero-pending',    txt: 'txt-pending',    icon: '⏳', sub: 'Awaiting bank authorization' },
+  AUTHORIZED: { hero: 'hero-authorized', txt: 'txt-authorized', icon: '✅', sub: 'Authorized by user, awaiting execution' },
+  EXECUTED:   { hero: 'hero-executed',   txt: 'txt-executed',   icon: '🎉', sub: 'Payment successfully executed' },
+  REJECTED:   { hero: 'hero-rejected',   txt: 'txt-rejected',   icon: '❌', sub: 'Payment was rejected' },
+  CANCELLED:  { hero: 'hero-rejected',   txt: 'txt-rejected',   icon: '🚫', sub: 'Payment was cancelled' },
+};
+
+const STEPS = ['PENDING', 'AUTHORIZED', 'EXECUTED'];
+
+function stepState(step, currentStatus) {
+  const rejected = currentStatus === 'REJECTED' || currentStatus === 'CANCELLED';
+  const stepIdx    = STEPS.indexOf(step);
+  const currentIdx = STEPS.indexOf(currentStatus);
+  if (rejected && step === 'EXECUTED') return 'fail';
+  if (stepIdx < currentIdx) return 'done';
+  if (stepIdx === currentIdx || (rejected && stepIdx === 1)) return rejected ? 'fail' : 'active';
+  return 'wait';
+}
+
+function fmtDate(iso) {
+  if (!iso) return '—';
+  try { return new Date(iso).toLocaleString(); } catch { return iso; }
+}
+
+function fmtAmount(amountStr, currency) {
+  if (!amountStr) return '—';
+  const num = parseFloat(amountStr);
+  if (isNaN(num)) return `${amountStr} ${currency || ''}`;
+  return num.toLocaleString(undefined, {
+    minimumFractionDigits: 2, maximumFractionDigits: 2
+  });
+}
+
+window.renderData = function(data) {
+  const root = document.getElementById('root');
+  const status = (data.status || 'UNKNOWN').toUpperCase();
+  const cfg = STATUS_CONFIG[status] || { hero: 'hero-default', txt: 'txt-default', icon: '❓', sub: 'Unknown status' };
+
+  // Extract payment details
+  const txns = data.payment_request?.credit_transfer_transaction || [];
+  const txn = txns[0] || {};
+  const amount = txn.instructed_amount?.amount;
+  const currency = txn.instructed_amount?.currency;
+  const creditorName = txn.creditor?.name || '—';
+  const creditorIban = txn.creditor_account?.iban || '';
+  const remittance = (txn.remittance_information || []).join(', ') || '—';
+  const paymentType = data.payment_request?.payment_type || '—';
+  const execDate = data.payment_request?.requested_execution_date;
+  const redirectUrl = data.aspsp_redirect_url;
+  const paymentId = data.payment_id || data.id || '—';
+  const createdAt = data.created_at;
+  const debtorIban = txn.debtor_account?.iban;
+
+  // Timeline
+  const rejected = status === 'REJECTED' || status === 'CANCELLED';
+  const timelineHtml = STEPS.map((step, i) => {
+    const state = rejected && step === 'EXECUTED' ? 'fail'
+                : STEPS.indexOf(step) < STEPS.indexOf(status) ? 'done'
+                : STEPS.indexOf(step) === STEPS.indexOf(status) ? 'active'
+                : 'wait';
+    const checkmark = state === 'done' ? '✓' : state === 'fail' ? '✕' : (i + 1).toString();
+    const connector = i < STEPS.length - 1
+      ? `<div class="step-connector ${STEPS.indexOf(step) < STEPS.indexOf(status) ? 'done' : ''}"></div>`
+      : '';
+    return `<div class="step">
+        <div class="step-dot ${state}">${checkmark}</div>
+        <div class="step-label ${state}">${step}</div>
+      </div>${connector}`;
+  }).join('');
+
+  // Details rows
+  const detailRows = [
+    ['Type', paymentType, false],
+    ['Amount', amount ? `${fmtAmount(amount, currency)} ${currency || ''}` : '—', false],
+    ['To', creditorName, false],
+    creditorIban ? ['Creditor IBAN', creditorIban, true] : null,
+    debtorIban   ? ['Debtor IBAN',   debtorIban,   true] : null,
+    ['Reference', remittance, false],
+    execDate     ? ['Exec. Date', execDate, false] : null,
+    createdAt    ? ['Created', fmtDate(createdAt), false] : null,
+  ].filter(Boolean).map(([k, v, mono]) =>
+    `<div class="detail-row">
+      <div class="detail-key">${k}</div>
+      <div class="detail-val${mono ? ' mono' : ''}">${v}</div>
+    </div>`
+  ).join('');
+
+  root.innerHTML = `
+    <div class="status-hero ${cfg.hero}">
+      <div class="status-icon">${cfg.icon}</div>
+      <div class="status-text ${cfg.txt}">${status}</div>
+      <div class="status-sub">${cfg.sub}</div>
+    </div>
+
+    ${(amount || creditorName !== '—') ? `<div class="amount-block">
+      <div class="amount-num">
+        ${fmtAmount(amount, currency)}<span class="amount-curr">${currency || ''}</span>
+      </div>
+      <div class="creditor-box">
+        <div class="creditor-name">${creditorName}</div>
+        ${creditorIban ? `<div class="creditor-iban">${creditorIban}</div>` : ''}
+      </div>
+    </div>` : ''}
+
+    <div class="timeline">${timelineHtml}</div>
+
+    ${detailRows ? `<div class="details-grid">${detailRows}</div>` : ''}
+
+    ${redirectUrl ? `<div class="redirect-box">
+      <div class="redirect-label">Authorization URL</div>
+      <a class="redirect-link" href="${redirectUrl}" target="_blank">${redirectUrl}</a>
+    </div>` : ''}
+
+    <div class="pid-box">
+      <div class="pid-label">Payment ID</div>
+      ${paymentId}
+    </div>
+  `;
+};
+
+window.addEventListener('message', function(event) {
+  const msg = event.data;
+  if (!msg || typeof msg !== 'object') return;
+  if (msg.jsonrpc === '2.0' && msg.id === 1 && 'result' in msg) {
+    const cs = msg.result?.colorScheme ?? msg.result?.theme;
+    if (cs === 'light') document.documentElement.setAttribute('data-theme', 'light');
+    try { window.parent.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/initialized' }, '*'); } catch(_) {}
+    return;
+  }
+  if (msg.jsonrpc === '2.0' && msg.method === 'ui/notifications/tool-result') {
+    try {
+      const d = msg.params?.structuredContent ||
+        (msg.params?.content?.[0]?.text ? JSON.parse(msg.params.content[0].text) : null);
+      if (d) { dataReceived = true; window.renderData(d); }
+    } catch(e) { console.error(e); }
+    return;
+  }
+});
+
+try {
+  window.parent.postMessage({
+    jsonrpc: '2.0', id: 1, method: 'ui/initialize',
+    params: { protocolVersion: '2026-01-26',
+      appCapabilities: { availableDisplayModes: ['inline'] },
+      clientInfo: { name: 'payment-status', version: '1.0.0' } }
+  }, '*');
+} catch(_) {}
+</script>
+</body>
+</html>

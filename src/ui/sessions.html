@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sessions Dashboard</title>
+<style>
+  :root {
+    --bg: #0d1117; --surface: #161b22; --border: #30363d;
+    --text: #e6edf3; --muted: #8b949e;
+    --green: #3fb950; --red: #f85149; --blue: #58a6ff;
+    --gold: #d29922; --purple: #bc8cff;
+    --card-bg: #1c2128;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #ffffff; --surface: #f6f8fa; --border: #d0d7de;
+      --text: #1f2328; --muted: #636c76;
+      --green: #1a7f37; --red: #cf222e; --blue: #0969da;
+      --gold: #9a6700; --purple: #8250df;
+      --card-bg: #ffffff;
+    }
+  }
+  [data-theme="light"] {
+    --bg: #ffffff; --surface: #f6f8fa; --border: #d0d7de;
+    --text: #1f2328; --muted: #636c76;
+    --green: #1a7f37; --red: #cf222e; --blue: #0969da;
+    --gold: #9a6700; --purple: #8250df;
+    --card-bg: #ffffff;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    font-size: 13px; line-height: 1.5; padding: 16px;
+  }
+  .header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid var(--border);
+    flex-wrap: wrap; gap: 8px;
+  }
+  .header h1 { font-size: 15px; font-weight: 600; color: var(--text); }
+  .count-badge {
+    font-size: 11px; color: var(--muted);
+    background: var(--surface); border: 1px solid var(--border);
+    padding: 2px 8px; border-radius: 12px;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 12px;
+  }
+  .card {
+    background: var(--card-bg); border: 1px solid var(--border);
+    border-radius: 8px; padding: 14px; transition: border-color 0.15s;
+  }
+  .card:hover { border-color: var(--blue); }
+  .card-head {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    margin-bottom: 10px; gap: 8px;
+  }
+  .bank-name { font-size: 14px; font-weight: 600; color: var(--text); }
+  .country-flag { font-size: 13px; color: var(--muted); margin-top: 1px; }
+  .status-badge {
+    font-size: 10px; font-weight: 600; letter-spacing: 0.04em;
+    padding: 2px 7px; border-radius: 10px; white-space: nowrap; flex-shrink: 0;
+  }
+  .status-authorized { background: color-mix(in srgb, var(--green) 15%, transparent); color: var(--green); border: 1px solid color-mix(in srgb, var(--green) 30%, transparent); }
+  .status-expired    { background: color-mix(in srgb, var(--gold) 15%, transparent);  color: var(--gold);  border: 1px solid color-mix(in srgb, var(--gold)  30%, transparent); }
+  .status-error      { background: color-mix(in srgb, var(--red)  15%, transparent);  color: var(--red);   border: 1px solid color-mix(in srgb, var(--red)   30%, transparent); }
+  .status-unknown    { background: color-mix(in srgb, var(--muted) 12%, transparent); color: var(--muted); border: 1px solid color-mix(in srgb, var(--muted) 25%, transparent); }
+  .label-text {
+    font-size: 12px; color: var(--muted); margin-bottom: 10px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .meta-row {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 11px; color: var(--muted); margin-bottom: 5px;
+  }
+  .meta-row svg { opacity: 0.6; flex-shrink: 0; }
+  .expiry-soon { color: var(--gold); }
+  .expiry-ok   { color: var(--green); }
+  .expiry-past { color: var(--red); }
+  .session-id-box {
+    margin-top: 10px; padding: 6px 8px;
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 5px; font-family: ui-monospace, monospace;
+    font-size: 10px; color: var(--muted);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    cursor: pointer; user-select: all;
+    transition: border-color 0.15s, color 0.15s;
+  }
+  .session-id-box:hover { border-color: var(--blue); color: var(--text); }
+  .empty-state {
+    text-align: center; padding: 48px 16px; color: var(--muted);
+  }
+  .empty-icon { font-size: 32px; margin-bottom: 12px; opacity: 0.4; }
+  .loading { color: var(--muted); padding: 32px; text-align: center; }
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>Sessions Dashboard</h1>
+  <span class="count-badge" id="count">—</span>
+</div>
+<div id="root"><div class="loading">Waiting for data…</div></div>
+
+<script>
+let dataReceived = false;
+
+function statusClass(s) {
+  if (!s) return 'status-unknown';
+  const u = String(s).toUpperCase();
+  if (u === 'AUTHORIZED') return 'status-authorized';
+  if (u === 'EXPIRED' || u === 'REVOKED') return 'status-expired';
+  if (u.startsWith('ERROR') || u === 'UNAUTHORIZED') return 'status-error';
+  return 'status-unknown';
+}
+
+function expiryInfo(iso) {
+  if (!iso) return { text: 'No expiry', cls: '' };
+  const diff = new Date(iso) - Date.now();
+  const days = Math.floor(diff / 86400000);
+  const hours = Math.floor((diff % 86400000) / 3600000);
+  if (diff < 0) return { text: 'Expired', cls: 'expiry-past' };
+  if (days === 0 && hours < 2) return { text: `Expires in ${hours}h`, cls: 'expiry-soon' };
+  if (days < 3) return { text: `Expires in ${days}d ${hours}h`, cls: 'expiry-soon' };
+  if (days < 30) return { text: `Expires in ${days} days`, cls: 'expiry-ok' };
+  const months = Math.floor(days / 30);
+  return { text: `Expires in ~${months} month${months !== 1 ? 's' : ''}`, cls: 'expiry-ok' };
+}
+
+function fmtDate(iso) {
+  if (!iso) return '';
+  try {
+    return new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+  } catch { return iso.slice(0, 10); }
+}
+
+function countryFlag(code) {
+  if (!code || code.length !== 2) return code || '';
+  return code.toUpperCase().split('').map(c => String.fromCodePoint(0x1F1E6 - 65 + c.charCodeAt(0))).join('');
+}
+
+window.renderData = function(data) {
+  const sessions = Array.isArray(data) ? data : (data.data ? data.data : [data]);
+  const root = document.getElementById('root');
+  document.getElementById('count').textContent = `${sessions.length} session${sessions.length !== 1 ? 's' : ''}`;
+
+  if (sessions.length === 0) {
+    root.innerHTML = '<div class="empty-state"><div class="empty-icon">🔒</div><p>No sessions found.</p></div>';
+    return;
+  }
+
+  const cards = sessions.map(s => {
+    const status = s.live_status || s.status || 'UNKNOWN';
+    const sCls = statusClass(status);
+    const exp = expiryInfo(s.valid_until || s.valid_until_date);
+    const flag = countryFlag(s.country);
+    const label = s.label && s.label !== s.session_id ? `<div class="label-text" title="${s.label}">${s.label}</div>` : '';
+
+    return `<div class="card">
+      <div class="card-head">
+        <div>
+          <div class="bank-name">${s.bank || 'Unknown bank'} <span class="country-flag">${flag}</span></div>
+        </div>
+        <span class="status-badge ${sCls}">${status}</span>
+      </div>
+      ${label}
+      <div class="meta-row">
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M5 4.5a3 3 0 1 1 6 0 3 3 0 0 1-6 0zM8 0a4.5 4.5 0 1 0 0 9A4.5 4.5 0 0 0 8 0zM1.5 14.5a6.5 6.5 0 0 1 13 0H1.5z"/>
+        </svg>
+        <span>${s.psu_type || 'personal'}</span>
+      </div>
+      ${s.valid_until ? `<div class="meta-row">
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M8 0a8 8 0 1 0 0 16A8 8 0 0 0 8 0zM1.5 8a6.5 6.5 0 1 1 13 0 6.5 6.5 0 0 1-13 0zm6-3.5v3.25l2.5 2.5-.7.7-2.8-2.8V4.5h1z"/>
+        </svg>
+        <span class="${exp.cls}">${exp.text}</span>
+      </div>` : ''}
+      ${s.created_at ? `<div class="meta-row">
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="currentColor">
+          <path d="M4.75 0a.75.75 0 0 1 .75.75V2h5V.75a.75.75 0 0 1 1.5 0V2h1.25c.966 0 1.75.784 1.75 1.75v10.5A1.75 1.75 0 0 1 13.25 16H2.75A1.75 1.75 0 0 1 1 14.25V3.75C1 2.784 1.784 2 2.75 2H4V.75A.75.75 0 0 1 4.75 0zm0 3.5h-2a.25.25 0 0 0-.25.25V6h11V3.75a.25.25 0 0 0-.25-.25h-2V4.5a.75.75 0 0 1-1.5 0V3.5h-5V4.5a.75.75 0 0 1-1.5 0v-1zm-2.25 4v6.75c0 .138.112.25.25.25h10.5a.25.25 0 0 0 .25-.25V7.5H2.5z"/>
+        </svg>
+        <span>Created ${fmtDate(s.created_at)}</span>
+      </div>` : ''}
+      <div class="session-id-box" title="Click to select">${s.session_id}</div>
+    </div>`;
+  }).join('');
+
+  root.innerHTML = `<div class="grid">${cards}</div>`;
+};
+
+window.addEventListener('message', function(event) {
+  const msg = event.data;
+  if (!msg || typeof msg !== 'object') return;
+  if (msg.jsonrpc === '2.0' && msg.id === 1 && 'result' in msg) {
+    const cs = msg.result?.colorScheme ?? msg.result?.theme;
+    if (cs === 'light') document.documentElement.setAttribute('data-theme', 'light');
+    try { window.parent.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/initialized' }, '*'); } catch(_) {}
+    return;
+  }
+  if (msg.jsonrpc === '2.0' && msg.method === 'ui/notifications/tool-result') {
+    try {
+      const d = msg.params?.structuredContent ||
+        (msg.params?.content?.[0]?.text ? JSON.parse(msg.params.content[0].text) : null);
+      if (d) { dataReceived = true; window.renderData(d); }
+    } catch(e) { console.error(e); }
+    return;
+  }
+});
+
+try {
+  window.parent.postMessage({
+    jsonrpc: '2.0', id: 1, method: 'ui/initialize',
+    params: { protocolVersion: '2026-01-26',
+      appCapabilities: { availableDisplayModes: ['inline'] },
+      clientInfo: { name: 'sessions-dashboard', version: '1.0.0' } }
+  }, '*');
+} catch(_) {}
+</script>
+</body>
+</html>

@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Spending Breakdown</title>
+    <style>
+        :root {
+            --bg: #0d1117;
+            --surface: #161b22;
+            --border: #30363d;
+            --text: #e6edf3;
+            --muted: #8b949e;
+            --track: rgba(255,255,255,.06);
+            --blue: #58a6ff;
+        }
+        @media (prefers-color-scheme: light) {
+            :root {
+                --bg: #ffffff;
+                --surface: #f6f8fa;
+                --border: #d0d7de;
+                --text: #1f2328;
+                --muted: #636c76;
+                --track: rgba(0,0,0,.07);
+                --blue: #0969da;
+            }
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            background: var(--bg); color: var(--text);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            padding: 16px;
+        }
+        .header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 4px; }
+        h2 { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .08em; }
+        .badge { font-size: 11px; background: rgba(88,166,255,.12); color: var(--blue); border-radius: 100px; padding: 2px 9px; font-weight: 600; display: none; }
+        .total-row { display: flex; align-items: baseline; gap: 8px; margin-bottom: 16px; }
+        .total { font-size: 30px; font-weight: 700; letter-spacing: -.02em; }
+        .subtitle { font-size: 12px; color: var(--muted); }
+        .layout { display: flex; gap: 20px; align-items: flex-start; }
+        .donut-wrap { flex-shrink: 0; position: relative; width: 168px; height: 168px; }
+        .donut-wrap svg { width: 168px; height: 168px; }
+        .donut-center {
+            position: absolute; inset: 0;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            pointer-events: none;
+        }
+        .donut-center .dc-n { font-size: 22px; font-weight: 700; letter-spacing: -.02em; }
+        .donut-center .dc-l { font-size: 11px; color: var(--muted); }
+        .bars { flex: 1; display: flex; flex-direction: column; gap: 9px; min-width: 0; }
+        .bar-row { display: grid; grid-template-columns: 1fr auto; grid-template-rows: auto 6px; column-gap: 10px; row-gap: 4px; align-items: center; }
+        .bar-label { font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .bar-amt { font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+        .bar-track { grid-column: 1/3; background: var(--track); border-radius: 4px; height: 6px; overflow: hidden; }
+        .bar-fill { height: 100%; border-radius: 4px; transition: width .7s cubic-bezier(.4,0,.2,1); }
+        .empty { text-align: center; color: var(--muted); padding: 48px 0; font-size: 14px; line-height: 1.8; flex: 1; }
+        .empty code { color: var(--blue); }
+    </style>
+</head>
+
+<body>
+    <div class="header">
+        <h2>Spending Breakdown</h2>
+        <span class="badge" id="badge"></span>
+    </div>
+    <div class="total-row">
+        <div class="total" id="total">—</div>
+        <div class="subtitle" id="subtitle"></div>
+    </div>
+    <div class="layout" id="layout">
+        <div class="empty" id="empty">Loading…</div>
+    </div>
+
+    <script>
+        const PALETTE = ['#58a6ff','#3fb950','#d29922','#bc8cff','#ff7b72','#f0883e','#39d353','#a371f7','#79c0ff','#56d364','#e3b341','#d2a8ff'];
+        function fmt(n, cur) {
+            return new Intl.NumberFormat(undefined, { style: 'currency', currency: cur || 'EUR', maximumFractionDigits: 0 }).format(n);
+        }
+        function buildDonut(cats, total) {
+            const r = 62, cx = 84, cy = 84, C = 2 * Math.PI * r, sw = 18;
+            const gap = cats.length > 1 ? 2 : 0;
+            let cum = 0;
+            const circles = cats.slice().reverse().map((c, ri) => {
+                const i = cats.length - 1 - ri;
+                const rawArc = (c.amount / total) * C;
+                const arc = Math.max(rawArc - gap, 1);
+                const offset = C - cum;
+                cum += rawArc;
+                return `<circle r="${r}" cx="${cx}" cy="${cy}" fill="none" stroke="${PALETTE[i%PALETTE.length]}" stroke-width="${sw}" stroke-dasharray="${arc} ${C-arc}" stroke-dashoffset="${C-(cum-rawArc)}" stroke-linecap="round" transform="rotate(-90 ${cx} ${cy})" />`;
+            }).join('');
+            return `<svg viewBox="0 0 168 168"><circle r="${r}" cx="${cx}" cy="${cy}" fill="none" stroke="var(--track)" stroke-width="${sw}" />${circles}</svg>`;
+        }
+        function render(data) {
+            let cats = [], pages = null, currency = 'EUR';
+            if (data.categories) {
+                cats = data.categories; pages = data.pages_fetched; currency = cats[0]?.currency ?? 'EUR';
+            } else if (Array.isArray(data) && data[0]?.label !== undefined) {
+                cats = data; currency = cats[0]?.currency ?? 'EUR';
+            } else {
+                const txns = Array.isArray(data) ? data : (data.transactions ?? []);
+                const map = {};
+                for (const t of txns) {
+                    const amt = parseFloat(t.transaction_amount?.amount ?? t.amount ?? 0);
+                    if ((t.credit_debit_indicator === 'CRDT') || amt >= 0) continue;
+                    const s = t.remittance_information?.[0] ?? '';
+                    const label = t.creditor?.name?.trim() || (s.includes(' ') ? s.slice(0,40) : s) || 'Other';
+                    currency = t.transaction_amount?.currency ?? currency;
+                    map[label] = (map[label]||0) + Math.abs(amt);
+                }
+                cats = Object.entries(map).map(([label, amount]) => ({label, amount, currency}));
+            }
+            cats.sort((a,b) => b.amount - a.amount);
+            const top = cats.slice(0,10);
+            const otherAmt = cats.slice(10).reduce((s,c) => s+c.amount, 0);
+            if (otherAmt > 0) top.push({label:'Other', amount:otherAmt, currency});
+            const total = top.reduce((s,c) => s+c.amount, 0);
+            const max = top[0]?.amount ?? 1;
+            document.getElementById('total').textContent = fmt(total, currency);
+            document.getElementById('subtitle').textContent = `${cats.length} categor${cats.length===1?'y':'ies'}`;
+            if (pages && pages > 1) {
+                const b = document.getElementById('badge'); b.style.display=''; b.textContent=`${pages} pages`;
+            }
+            if (!top.length) { document.getElementById('layout').innerHTML='<div class="empty">No spending data.</div>'; return; }
+            const donutSvg = buildDonut(top, total);
+            const barRows = top.map((c,i) => {
+                const pct = total>0 ? (c.amount/max)*100 : 0;
+                const color = PALETTE[i%PALETTE.length];
+                return `<div class="bar-row"><div class="bar-label" title="${c.label}" style="color:${color}">${c.label}</div><div class="bar-amt" style="color:${color}">${fmt(c.amount,c.currency??currency)}</div><div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${color}"></div></div></div>`;
+            }).join('');
+            document.getElementById('layout').innerHTML = `<div class="donut-wrap">${donutSvg}<div class="donut-center"><span class="dc-n">${top.length}</span><span class="dc-l">categories</span></div></div><div class="bars">${barRows}</div>`;
+            document.getElementById('empty')?.remove();
+        }
+        let dataReceived = false;
+        window.renderData = function(json) {
+            dataReceived = true;
+            try { render(typeof json === 'string' ? JSON.parse(json) : json); } catch(e) { console.error(e); }
+        };
+        window.addEventListener('message', function(event) {
+            const msg = event.data;
+            if (!msg || typeof msg !== 'object') return;
+            if (msg.jsonrpc === '2.0' && msg.id === 1 && 'result' in msg) {
+                const cs = msg.result?.colorScheme ?? msg.result?.theme;
+                if (cs === 'light') document.documentElement.setAttribute('data-theme','light');
+                try { window.parent.postMessage({jsonrpc:'2.0',method:'ui/notifications/initialized'},'*'); } catch(_){}
+                return;
+            }
+            if (msg.jsonrpc === '2.0' && msg.method === 'ui/notifications/tool-result') {
+                try {
+                    const d = msg.params?.structuredContent || (msg.params?.content?.[0]?.text ? JSON.parse(msg.params.content[0].text) : null);
+                    if (d) { dataReceived=true; window.renderData(d); }
+                } catch(e) { console.error(e); }
+                return;
+            }
+        });
+        setTimeout(() => { if (!dataReceived) document.getElementById('layout').innerHTML='<div class="empty">No data received.<br><small>Call <code>spending_summary</code> with a session_id to populate.</small></div>'; }, 5000);
+        try {
+            window.parent.postMessage({jsonrpc:'2.0',id:1,method:'ui/initialize',
+                params:{protocolVersion:'2026-01-26',appCapabilities:{availableDisplayModes:['inline']},clientInfo:{name:'spending-view',version:'2.0.0'}}}, '*');
+        } catch(_){}
+    </script>
+</body>
+
+</html>
