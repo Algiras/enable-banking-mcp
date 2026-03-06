@@ -2,6 +2,10 @@
 name = "enable-banking-mcp"
 version = "0.3.0"
 edition = "2021"
+license = "MIT"
+description = "MCP server for the Enable Banking API — Open Banking data for AI assistants"
+repository = "https://github.com/Algiras/enable-banking-mcp"
+readme = "README.md"
 
 [[bin]]
 name = "enable-banking-mcp"

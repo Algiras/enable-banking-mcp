@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/Algiras/enable-banking-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/Algiras/enable-banking-mcp/actions/workflows/ci.yml)
 [![Release](https://github.com/Algiras/enable-banking-mcp/actions/workflows/release.yml/badge.svg)](https://github.com/Algiras/enable-banking-mcp/actions/workflows/release.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 An [MCP (Model Context Protocol)](https://modelcontextprotocol.io) server for the [Enable Banking API](https://enablebanking.com), written in Rust. Gives AI assistants (Claude, Copilot, etc.) direct access to Open Banking data across hundreds of European banks.
 
@@ -9,8 +10,8 @@ An [MCP (Model Context Protocol)](https://modelcontextprotocol.io) server for th
 
 ## Table of Contents
 
-- [Install](#install)
 - [Prerequisites](#prerequisites)
+- [Install](#install)
 - [How It Works](#how-it-works)
 - [MCP Configuration](#mcp-configuration)
 - [Build from Source](#build-from-source)
@@ -241,6 +242,8 @@ Ask your AI assistant to start an authorization flow, or do it manually:
 | Swedbank | `19901111-1111` |
 | Mock ASPSP | *(any — may return errors)* |
 
+> **Other countries:** Sandbox test users vary by bank. Ask your AI assistant `"list available banks in <country>"` — the `get_available_banks` tool returns sandbox user credentials in the response for each bank that supports them.
+
 When the browser opens the bank authorization page, log in with the sandbox test credentials. After approval the browser will redirect to `https://localhost:8080/callback` and show **"Authorization Successful"**. The code is captured automatically.
 
 ### 5. Install into Claude Desktop / VS Code
@@ -250,6 +253,8 @@ When the browser opens the bank authorization page, log in with the sandbox test
 ```
 
 This writes the MCP server config to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS).
+
+> **Important:** Restart Claude Desktop (or reload your VS Code window) after running `install` for the new tools to appear.
 
 ---
 
@@ -331,6 +336,8 @@ The CLI will:
 ```sh
 ./target/release/enable-banking-mcp install
 ```
+
+> **Important:** Restart Claude Desktop (or reload your VS Code window) after running `install` for the new tools to appear.
 
 ---
 
@@ -414,8 +421,9 @@ sequenceDiagram
 | `get_payment` | Get payment status |
 | `delete_payment` | Cancel a pending payment |
 | `get_application` | Get your Enable Banking application details |
-| `get_available_banks` | List supported banks, optionally filtered by country |
+| `get_available_banks` | List supported banks, optionally filtered by country (includes sandbox test users) |
 | `configure_secrets` | Save App ID and private key to `.env` |
+| `setup_guide` | Get step-by-step setup instructions |
 
 ---
 
