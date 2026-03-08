@@ -452,8 +452,8 @@
   <!-- Step 2: Authorization Pending -->
   <div class="step" id="step2">
     <p style="font-size:13px;color:var(--muted);margin-bottom:14px">Open the link below to log in to your bank, then wait for this page to detect the authorisation.</p>
-    <a id="auth-link" href="#" target="_blank" class="btn-green" rel="noopener noreferrer">Open bank login ↗</a>
-    <div class="auth-url-box" id="auth-url-display" title="Click to select all"></div>
+    <button class="btn-green" id="auth-link" onclick="copyAndOpen()">Copy Auth URL</button>
+    <div class="auth-url-box" id="auth-url-display" title="Click to select — then paste in browser" style="cursor:text;user-select:all"></div>
 
     <div class="spinner-row">
       <div class="spinner" id="poll-spinner"></div>
@@ -696,8 +696,8 @@
     function enterStep2() {
       showStep(2);
 
-      document.getElementById('auth-link').href = authUrl;
       document.getElementById('auth-url-display').textContent = authUrl;
+      try { window.open(authUrl, '_blank', 'noopener'); } catch(_) {}
       document.getElementById('timeout-msg').style.display = 'none';
 
       elapsedSeconds = 0;
@@ -739,6 +739,18 @@
           enterStep3();
         }
       });
+    }
+
+    function copyAndOpen() {
+      if (!authUrl) return;
+      navigator.clipboard.writeText(authUrl).catch(() => {
+        const ta = document.createElement('textarea');
+        ta.value = authUrl; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
+      });
+      const btn = document.getElementById('auth-link');
+      const orig = btn.textContent; btn.textContent = 'Copied!';
+      setTimeout(() => btn.textContent = orig, 1500);
+      try { window.open(authUrl, '_blank', 'noopener'); } catch(_) {}
     }
 
     function stopPolling() {
