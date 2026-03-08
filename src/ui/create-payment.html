@@ -131,12 +131,15 @@
       <div class="section-title">Bank</div>
       <div class="fields">
         <div class="field">
-          <label>Bank Name</label>
-          <input name="bank_name" type="text" required placeholder="e.g. Swedbank">
+          <label>Country</label>
+          <input name="country" id="country-input" type="text" required maxlength="2" placeholder="LT"
+            style="text-transform:uppercase" oninput="onCountryInput(this)">
         </div>
         <div class="field">
-          <label>Country</label>
-          <input name="country" type="text" required maxlength="2" placeholder="LT" style="text-transform:uppercase">
+          <label>Bank Name</label>
+          <input name="bank_name" id="bank-name-input" type="text" required placeholder="e.g. Swedbank" list="bank-list">
+          <datalist id="bank-list"></datalist>
+          <div id="bank-load-status" style="font-size:10px;color:var(--muted);margin-top:3px;display:none"></div>
         </div>
         <div class="field">
           <label>Payment Type</label>
@@ -290,6 +293,31 @@ function copyAuthUrl() {
   try { document.execCommand('copy'); } catch(_) {}
   const btn = document.getElementById('copy-url-btn');
   if (btn) { const orig = btn.textContent; btn.textContent = 'Copied!'; setTimeout(() => btn.textContent = orig, 1500); }
+}
+
+let _bankFetchCountry = null;
+function onCountryInput(el) {
+  el.value = el.value.toUpperCase();
+  const country = el.value.trim();
+  if (country.length !== 2 || country === _bankFetchCountry) return;
+  _bankFetchCountry = country;
+  const status = document.getElementById('bank-load-status');
+  status.textContent = 'Loading banks…'; status.style.display = '';
+  callTool('get_available_banks', { country, psu_type: 'personal' }, function(result, err) {
+    if (err || result?.isError) { status.style.display = 'none'; return; }
+    try {
+      const text = result?.content?.[0]?.text || '';
+      const data = result?.structuredContent || JSON.parse(text);
+      const banks = Array.isArray(data) ? data : (data.banks || data.aspsps || []);
+      const dl = document.getElementById('bank-list');
+      dl.innerHTML = banks.map(b => {
+        const name = typeof b === 'string' ? b : (b.name || b.full_name || '');
+        return name ? `<option value="${name.replace(/"/g,'')}">` : '';
+      }).join('');
+      status.textContent = `${banks.length} banks available`;
+      setTimeout(() => status.style.display = 'none', 2000);
+    } catch(_) { status.style.display = 'none'; }
+  });
 }
 
 function loadAccounts() {
