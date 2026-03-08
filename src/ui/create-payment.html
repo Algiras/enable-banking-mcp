@@ -209,7 +209,7 @@
       <div class="fields">
         <div class="field full">
           <label>Redirect URL <span class="optional">after bank authorisation</span></label>
-          <input name="redirect_url" type="text" value="https://localhost:8080/callback">
+          <input name="redirect_url" type="text" value="https://algiras.github.io/enable-banking-mcp/payment-callback">
         </div>
         <div class="field">
           <label>Execution Date <span class="optional">optional</span></label>
@@ -276,6 +276,18 @@ function showResult(authUrl, paymentId) {
   document.getElementById('pid-box').textContent = paymentId || '—';
 }
 
+function validateIBAN(v) {
+  const s = v.replace(/\s/g, '').toUpperCase();
+  return /^[A-Z]{2}\d{2}[A-Z0-9]{1,30}$/.test(s);
+}
+function showFieldError(name, msg) {
+  const el = document.querySelector(`[name="${name}"]`);
+  if (el) { el.classList.add('error'); el.title = msg; }
+}
+function clearFieldErrors() {
+  document.querySelectorAll('input.error').forEach(el => { el.classList.remove('error'); el.title = ''; });
+}
+
 document.getElementById('form').addEventListener('submit', function(e) {
   e.preventDefault();
   const fd = new FormData(e.target);
@@ -283,6 +295,25 @@ document.getElementById('form').addEventListener('submit', function(e) {
 
   const errEl = document.getElementById('error-msg');
   errEl.style.display = 'none';
+  clearFieldErrors();
+
+  // Validate
+  const errors = [];
+  if (!g('bank_name')) { errors.push('Bank name is required'); showFieldError('bank_name', 'Required'); }
+  if (!/^[A-Za-z]{2}$/.test(g('country'))) { errors.push('Country must be a 2-letter code (e.g. LT, DE)'); showFieldError('country', '2-letter code required'); }
+  const amt = parseFloat(g('amount'));
+  if (!g('amount') || isNaN(amt) || amt <= 0) { errors.push('Amount must be greater than 0'); showFieldError('amount', 'Must be > 0'); }
+  if (!g('creditor_name')) { errors.push('Recipient name is required'); showFieldError('creditor_name', 'Required'); }
+  if (!g('creditor_iban')) { errors.push('Recipient IBAN is required'); showFieldError('creditor_iban', 'Required'); }
+  else if (!validateIBAN(g('creditor_iban'))) { errors.push('Recipient IBAN format is invalid'); showFieldError('creditor_iban', 'Invalid IBAN format'); }
+  if (g('debtor_iban') && !validateIBAN(g('debtor_iban'))) { errors.push('Your IBAN format is invalid'); showFieldError('debtor_iban', 'Invalid IBAN format'); }
+  if (!g('redirect_url') || !g('redirect_url').startsWith('http')) { errors.push('Redirect URL must be a valid URL'); showFieldError('redirect_url', 'Valid URL required'); }
+
+  if (errors.length) {
+    errEl.textContent = errors[0];
+    errEl.style.display = '';
+    return;
+  }
 
   const btn = document.getElementById('submit-btn');
   btn.disabled = true; btn.textContent = 'Initiating…';
