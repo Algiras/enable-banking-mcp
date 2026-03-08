@@ -27,6 +27,7 @@
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
+    
     background: var(--bg); color: var(--text);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
     font-size: 13px; line-height: 1.5; padding: 16px; max-width: 560px; margin: 0 auto;
@@ -136,6 +137,12 @@
 <div id="root"><div class="loading">Waiting for data…</div></div>
 
 <script>
+function reportSize() {
+  try { window.parent.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/size-changed',
+    params: { height: document.body.scrollHeight, width: document.body.scrollWidth } }, '*'); } catch(_) {}
+}
+new ResizeObserver(reportSize).observe(document.body);
+
 let dataReceived = false;
 
 const STATUS_CONFIG = {
@@ -263,9 +270,9 @@ window.addEventListener('message', function(event) {
   const msg = event.data;
   if (!msg || typeof msg !== 'object') return;
   if (msg.jsonrpc === '2.0' && msg.id === 1 && 'result' in msg) {
-    const cs = msg.result?.colorScheme ?? msg.result?.theme;
-    if (cs === 'light') document.documentElement.setAttribute('data-theme', 'light');
-    try { window.parent.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/initialized' }, '*'); } catch(_) {}
+    const hc = msg.result?.hostContext;
+    if (hc?.theme === 'light') document.documentElement.setAttribute('data-theme', 'light');
+    try { window.parent.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/initialized', params: {} }, '*'); } catch(_) {}
     return;
   }
   if (msg.jsonrpc === '2.0' && msg.method === 'ui/notifications/tool-result') {
@@ -283,7 +290,7 @@ try {
     jsonrpc: '2.0', id: 1, method: 'ui/initialize',
     params: { protocolVersion: '2026-01-26',
       appCapabilities: { availableDisplayModes: ['inline'] },
-      clientInfo: { name: 'payment-status', version: '1.0.0' } }
+      appInfo: { name: 'payment-status', version: '1.0.0' } }
   }, '*');
 } catch(_) {}
 </script>

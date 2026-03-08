@@ -27,7 +27,7 @@
             }
         }
         * { box-sizing: border-box; margin: 0; padding: 0; }
-        body {
+    body {
             background: var(--bg); color: var(--text);
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
             padding: 16px;
@@ -131,6 +131,12 @@
             document.getElementById('layout').innerHTML = `<div class="donut-wrap">${donutSvg}<div class="donut-center"><span class="dc-n">${top.length}</span><span class="dc-l">categories</span></div></div><div class="bars">${barRows}</div>`;
             document.getElementById('empty')?.remove();
         }
+        function reportSize() {
+            try { window.parent.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/size-changed',
+                params: { height: document.body.scrollHeight, width: document.body.scrollWidth } }, '*'); } catch(_) {}
+        }
+        new ResizeObserver(reportSize).observe(document.body);
+
         let dataReceived = false;
         window.renderData = function(json) {
             dataReceived = true;
@@ -140,9 +146,9 @@
             const msg = event.data;
             if (!msg || typeof msg !== 'object') return;
             if (msg.jsonrpc === '2.0' && msg.id === 1 && 'result' in msg) {
-                const cs = msg.result?.colorScheme ?? msg.result?.theme;
-                if (cs === 'light') document.documentElement.setAttribute('data-theme','light');
-                try { window.parent.postMessage({jsonrpc:'2.0',method:'ui/notifications/initialized'},'*'); } catch(_){}
+                const hc = msg.result?.hostContext;
+                if (hc?.theme === 'light') document.documentElement.setAttribute('data-theme','light');
+                try { window.parent.postMessage({jsonrpc:'2.0',method:'ui/notifications/initialized',params:{}},'*'); } catch(_){}
                 return;
             }
             if (msg.jsonrpc === '2.0' && msg.method === 'ui/notifications/tool-result') {
@@ -156,7 +162,7 @@
         setTimeout(() => { if (!dataReceived) document.getElementById('layout').innerHTML='<div class="empty">No data received.<br><small>Call <code>spending_summary</code> with a session_id to populate.</small></div>'; }, 5000);
         try {
             window.parent.postMessage({jsonrpc:'2.0',id:1,method:'ui/initialize',
-                params:{protocolVersion:'2026-01-26',appCapabilities:{availableDisplayModes:['inline']},clientInfo:{name:'spending-view',version:'2.0.0'}}}, '*');
+                params:{protocolVersion:'2026-01-26',appCapabilities:{availableDisplayModes:['inline']},appInfo:{name:'spending-view',version:'2.0.0'}}}, '*');
         } catch(_){}
     </script>
 </body>

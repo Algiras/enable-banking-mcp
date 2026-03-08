@@ -107,8 +107,10 @@ fn err_result(msg: impl Into<String>) -> CallToolResult {
 
 fn tool_meta(uri: &str) -> Meta {
     Meta(serde_json::from_value(json!({
-        "ui": { "resourceUri": uri },
-        "io.modelcontextprotocol/ui": { "resourceUri": uri }
+        "ui": {
+            "resourceUri": uri,
+            "visibility": ["model", "app"]
+        }
     })).unwrap())
 }
 
@@ -206,11 +208,11 @@ fn build_tools() -> Vec<Tool> {
             &["code"], None),
 
         make_tool("list_sessions",
-            "List all active Enable Banking sessions previously created and saved locally. Shows session IDs, banks, expiry, and live status.",
+            "List all active Enable Banking sessions previously created and saved locally. Shows session IDs, banks, expiry, and live status. Renders a visual sessions dashboard inline in the chat (claude.ai web, Claude Desktop, Cursor). Do NOT create an artifact — the UI renders automatically.",
             &[], &[], Some(tool_meta("ui://sessions"))),
 
         make_tool("list_accounts",
-            "List all accounts accessible in a session, with their account IDs (UIDs) needed for balance and transaction queries.",
+            "List all accounts accessible in a session, with their account IDs (UIDs) needed for balance and transaction queries. Renders a visual account list inline in the chat (claude.ai web, Claude Desktop, Cursor). Do NOT create an artifact — the UI renders automatically.",
             &[p("session_id", "string", "Session UUID")],
             &["session_id"], Some(tool_meta("ui://accounts"))),
 
@@ -233,7 +235,7 @@ fn build_tools() -> Vec<Tool> {
             &["account_id", "session_id"], None),
 
         make_tool("get_account_balances",
-            "Get real-time balances for a bank account. Renders a visual balance dashboard in supported AI clients.",
+            "Get real-time balances for a bank account. Renders a visual balance dashboard inline in the chat (claude.ai web, Claude Desktop, Cursor). Do NOT create an artifact — the UI renders automatically.",
             &[
                 p("account_id", "string", "Account UUID"),
                 p("session_id", "string", "Session UUID"),
@@ -242,7 +244,7 @@ fn build_tools() -> Vec<Tool> {
             Some(tool_meta("ui://balances"))),
 
         make_tool("get_account_transactions",
-            "Get transaction history for a bank account. Automatically fetches all pages. Renders a visual transaction table in supported AI clients.",
+            "Get transaction history for a bank account. Automatically fetches all pages. Renders a visual transaction table inline in the chat (claude.ai web, Claude Desktop, Cursor). Do NOT create an artifact — the UI renders automatically.",
             &[
                 p("account_id",                  "string", "Account UUID"),
                 p("session_id",                  "string", "Session UUID"),
@@ -264,7 +266,7 @@ fn build_tools() -> Vec<Tool> {
             &["account_id", "session_id", "transaction_id"], None),
 
         make_tool("spending_summary",
-            "Summarise account spending by category across all pages of transactions. Renders a visual chart in supported AI clients.",
+            "Summarise account spending by category across all pages of transactions. Renders a visual chart inline in the chat (claude.ai web, Claude Desktop, Cursor). Do NOT create an artifact — the UI renders automatically.",
             &[
                 p("account_id", "string", "Account UUID"),
                 p("session_id", "string", "Session UUID"),
@@ -297,7 +299,7 @@ fn build_tools() -> Vec<Tool> {
             None),
 
         make_tool("get_payment",
-            "Retrieve the status and details of an existing payment.",
+            "Retrieve the status and details of an existing payment. Renders a visual payment status card inline in the chat (claude.ai web, Claude Desktop, Cursor). Do NOT create an artifact — the UI renders automatically.",
             &[p("payment_id", "string", "Payment UUID")],
             &["payment_id"], Some(tool_meta("ui://payment"))),
 
@@ -374,7 +376,18 @@ impl EnableBankingServer {
                  enable-banking-mcp register\n\
                  enable-banking-mcp init\n\
                  enable-banking-mcp install\n\
-                 ```",
+                 ```\n\n\
+                 ### Visual UI Dashboards\n\
+                 This MCP server renders interactive visual dashboards **directly in the chat** using MCP Apps (SEP-1865).\n\
+                 Supported clients: **claude.ai web**, **Claude Desktop**, Cursor, VS Code Copilot.\n\
+                 When you call these tools, an interactive iframe renders inline — **do NOT create artifacts or summarise as text**:\n\
+                 - `get_account_balances` → balance cards dashboard\n\
+                 - `get_account_transactions` → transaction table\n\
+                 - `spending_summary` → spending chart by category\n\
+                 - `list_sessions` → active sessions overview\n\
+                 - `list_accounts` → account list\n\
+                 - `get_payment` → payment status card\n\n\
+                 ⚠️ If you can see a rendered card or table in the chat after calling one of these tools, the UI IS working. Do not say it is unsupported — it is supported in both claude.ai web and Claude Desktop.",
                 self.env_mode
             )),
 
@@ -716,12 +729,10 @@ use api_get;
 
 impl ServerHandler for EnableBankingServer {
     fn get_info(&self) -> ServerInfo {
+        // MCP Apps: server declares "io.modelcontextprotocol/apps" to indicate support.
+        // The client (Claude Desktop) sends "io.modelcontextprotocol/ui" in its capabilities.
         let mut extensions = ExtensionCapabilities::new();
-        let ui_cap: JsonObject = serde_json::from_value(json!({
-            "supportedMimeTypes": ["text/html;profile=mcp-app"]
-        })).unwrap();
-        extensions.insert("io.modelcontextprotocol/ui".to_string(), ui_cap.clone());
-        extensions.insert("ui".to_string(), ui_cap);
+        extensions.insert("io.modelcontextprotocol/apps".to_string(), JsonObject::new());
 
         let mut caps = ServerCapabilities::default();
         caps.tools      = Some(ToolsCapability::default());

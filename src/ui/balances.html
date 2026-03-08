@@ -206,6 +206,14 @@
       }).join('');
     }
 
+    function reportSize() {
+      try {
+        window.parent.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/size-changed',
+          params: { height: document.body.scrollHeight, width: document.body.scrollWidth } }, '*');
+      } catch(_) {}
+    }
+    new ResizeObserver(reportSize).observe(document.body);
+
     let dataReceived = false;
     window.renderData = function(json) {
       dataReceived = true;
@@ -217,9 +225,9 @@
       if (!msg || typeof msg !== 'object') return;
       // Response to our ui/initialize request
       if (msg.jsonrpc === '2.0' && msg.id === 1 && 'result' in msg) {
-        const cs = msg.result?.colorScheme ?? msg.result?.theme;
-        if (cs === 'light') document.documentElement.setAttribute('data-theme', 'light');
-        try { window.parent.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/initialized' }, '*'); } catch(_) {}
+        const hc = msg.result?.hostContext;
+        if (hc?.theme === 'light') document.documentElement.setAttribute('data-theme', 'light');
+        try { window.parent.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/initialized', params: {} }, '*'); } catch(_) {}
         return;
       }
       // Tool result notification — contains the balance data
@@ -248,7 +256,7 @@
         params: {
           protocolVersion: '2026-01-26',
           appCapabilities: { availableDisplayModes: ['inline'] },
-          clientInfo: { name: 'balance-view', version: '1.0.0' }
+          appInfo: { name: 'balance-view', version: '1.0.0' }
         }
       }, '*');
     } catch(_) {}
