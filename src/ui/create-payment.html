@@ -277,7 +277,7 @@ function showForm() {
 function showResult(authUrl, paymentId) {
   document.getElementById('form-panel').style.display = 'none';
   const r = document.getElementById('result-panel');
-  r.style.display = '';
+  r.style.display = 'block';
   if (authUrl) {
     document.getElementById('auth-link').href = authUrl;
     document.getElementById('auth-link').textContent = authUrl;
