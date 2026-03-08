@@ -156,13 +156,23 @@
       padding: 48px 0;
       font-size: 14px;
     }
+    .refresh-btn {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 7px; color: var(--muted); cursor: pointer;
+      font-size: 11px; font-weight: 600; padding: 5px 11px;
+      transition: border-color .15s, color .15s;
+    }
+    .refresh-btn:hover { border-color: var(--blue); color: var(--blue); }
   </style>
 </head>
 
 <body>
   <div class="header">
     <h2>Account Balances</h2>
-    <span class="badge" id="badge" style="display:none"></span>
+    <div style="display:flex;gap:8px;align-items:center">
+      <span class="badge" id="badge" style="display:none"></span>
+      <button class="refresh-btn" id="refresh-btn" style="display:none" onclick="requestRefresh()">↻ Refresh</button>
+    </div>
   </div>
   <div class="grid" id="grid">
     <div class="empty">Loading…</div>
@@ -214,9 +224,15 @@
     }
     new ResizeObserver(reportSize).observe(document.body);
 
+    function requestRefresh() {
+      try { window.parent.postMessage({ jsonrpc: '2.0', id: 99, method: 'ui/message',
+        params: { content: [{ type: 'text', text: 'Please refresh the account balances' }] } }, '*'); } catch(_) {}
+    }
+
     let dataReceived = false;
     window.renderData = function(json) {
       dataReceived = true;
+      document.getElementById('refresh-btn').style.display = '';
       try { render(typeof json === 'string' ? JSON.parse(json) : json); } catch(e) { console.error(e); }
     };
 

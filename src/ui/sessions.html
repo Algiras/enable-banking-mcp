@@ -97,6 +97,16 @@
   }
   .empty-icon { font-size: 32px; margin-bottom: 12px; opacity: 0.4; }
   .loading { color: var(--muted); padding: 32px; text-align: center; }
+  .card-actions { display: flex; gap: 6px; margin-top: 12px; }
+  .btn {
+    flex: 1; padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border);
+    font-size: 11px; font-weight: 600; cursor: pointer; text-align: center;
+    background: var(--surface); color: var(--muted);
+    transition: background .15s, border-color .15s, color .15s;
+  }
+  .btn:hover:not(:disabled) { border-color: var(--blue); color: var(--blue); }
+  .btn-danger:hover:not(:disabled) { border-color: var(--red) !important; color: var(--red) !important; }
+  .btn:disabled { opacity: .4; cursor: default; }
 </style>
 </head>
 <body>
@@ -114,6 +124,33 @@ function reportSize() {
 new ResizeObserver(reportSize).observe(document.body);
 
 let dataReceived = false;
+let _callId = 10;
+const _pending = {};
+function callTool(name, args, cb) {
+  const id = _callId++;
+  _pending[id] = cb;
+  try { window.parent.postMessage({ jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: args } }, '*'); } catch(_) {}
+}
+function deleteSession(sid) {
+  const card = document.querySelector(`[data-sid="${sid}"]`);
+  const btn = card?.querySelector('.btn-danger');
+  if (btn) { btn.disabled = true; btn.textContent = 'Deleting…'; }
+  callTool('delete_session', { session_id: sid }, (result, err) => {
+    if (err || result?.isError) {
+      if (btn) { btn.disabled = false; btn.textContent = 'Delete'; }
+      return;
+    }
+    if (card) {
+      card.style.transition = 'opacity 0.3s';
+      card.style.opacity = '0';
+      setTimeout(() => {
+        card.remove();
+        const n = document.querySelectorAll('.card').length;
+        document.getElementById('count').textContent = `${n} session${n !== 1 ? 's' : ''}`;
+      }, 300);
+    }
+  });
+}
 
 function statusClass(s) {
   if (!s) return 'status-unknown';
@@ -166,7 +203,7 @@ window.renderData = function(data) {
     const flag = countryFlag(s.country);
     const label = s.label && s.label !== s.session_id ? `<div class="label-text" title="${s.label}">${s.label}</div>` : '';
 
-    return `<div class="card">
+    return `<div class="card" data-sid="${s.session_id}">
       <div class="card-head">
         <div>
           <div class="bank-name">${s.bank || 'Unknown bank'} <span class="country-flag">${flag}</span></div>
@@ -193,6 +230,9 @@ window.renderData = function(data) {
         <span>Created ${fmtDate(s.created_at)}</span>
       </div>` : ''}
       <div class="session-id-box" title="Click to select">${s.session_id}</div>
+      <div class="card-actions">
+        <button class="btn btn-danger" onclick="deleteSession('${s.session_id}')">Delete</button>
+      </div>
     </div>`;
   }).join('');
 
@@ -207,6 +247,9 @@ window.addEventListener('message', function(event) {
     if (hc?.theme === 'light') document.documentElement.setAttribute('data-theme', 'light');
     try { window.parent.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/initialized', params: {} }, '*'); } catch(_) {}
     return;
+  }
+  if (msg.jsonrpc === '2.0' && typeof msg.id === 'number' && msg.id >= 10 && _pending[msg.id]) {
+    const cb = _pending[msg.id]; delete _pending[msg.id]; cb(msg.result, msg.error); return;
   }
   if (msg.jsonrpc === '2.0' && msg.method === 'ui/notifications/tool-result') {
     try {

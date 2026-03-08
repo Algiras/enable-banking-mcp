@@ -249,6 +249,13 @@
             font-size: 12px;
             color: var(--muted);
         }
+        .export-btn {
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 7px; color: var(--muted); cursor: pointer;
+            font-size: 11px; font-weight: 600; padding: 6px 12px;
+            transition: border-color .15s, color .15s;
+        }
+        .export-btn:hover { border-color: var(--blue); color: var(--blue); }
     </style>
 </head>
 
@@ -256,6 +263,7 @@
     <div class="toolbar">
         <h2>Transactions</h2>
         <span class="info" id="info"></span>
+        <button class="export-btn" id="export-btn" style="display:none" onclick="exportCSV()">↓ Export CSV</button>
     </div>
     <div class="pagination-banner" id="pgbanner"></div>
     <div class="toolbar">
@@ -412,6 +420,23 @@
             display();
         }
 
+        function exportCSV() {
+            const headers = ['Date', 'Description', 'Amount', 'Currency', 'Status'];
+            const escCSV = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
+            const csvRows = [headers.join(',')];
+            for (const t of lastSorted) {
+                const amt = parseFloat(t.transaction_amount?.amount ?? t.amount ?? 0);
+                const cur = t.transaction_amount?.currency ?? t.currency ?? 'EUR';
+                const merchant = t.remittance_information?.[0] ?? t.creditor?.name ?? t.debtor?.name ?? '';
+                const date = (t.booking_date ?? t.value_date ?? '').substring(0, 10);
+                csvRows.push([date, escCSV(merchant), amt, cur, t.status ?? 'BOOK'].join(','));
+            }
+            const blob = new Blob([csvRows.join('\n')], { type: 'text/csv' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a'); a.href = url; a.download = 'transactions.csv'; a.click();
+            URL.revokeObjectURL(url);
+        }
+
         function reportSize() {
             try { window.parent.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/size-changed',
                 params: { height: document.body.scrollHeight, width: document.body.scrollWidth } }, '*'); } catch(_) {}
@@ -421,6 +446,7 @@
         let dataReceived = false;
         window.renderData = function(json) {
             dataReceived = true;
+            document.getElementById('export-btn').style.display = '';
             try { render(typeof json === 'string' ? JSON.parse(json) : json); } catch(e) { console.error(e); }
         };
 

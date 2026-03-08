@@ -36,12 +36,13 @@ pub fn write_env_file(path: &str, content: &str) -> std::io::Result<()> {
 
 // ─── HTML resources ───────────────────────────────────────────────────────────
 
-static HTML_BALANCES:     &str = include_str!("ui/balances.html");
-static HTML_TRANSACTIONS: &str = include_str!("ui/transactions.html");
-static HTML_SPENDING:     &str = include_str!("ui/spending.html");
-static HTML_SESSIONS:     &str = include_str!("ui/sessions.html");
-static HTML_ACCOUNTS:     &str = include_str!("ui/accounts.html");
-static HTML_PAYMENT:      &str = include_str!("ui/payment.html");
+static HTML_BALANCES:        &str = include_str!("ui/balances.html");
+static HTML_TRANSACTIONS:    &str = include_str!("ui/transactions.html");
+static HTML_SPENDING:        &str = include_str!("ui/spending.html");
+static HTML_SESSIONS:        &str = include_str!("ui/sessions.html");
+static HTML_ACCOUNTS:        &str = include_str!("ui/accounts.html");
+static HTML_PAYMENT:         &str = include_str!("ui/payment.html");
+static HTML_CREATE_PAYMENT:  &str = include_str!("ui/create-payment.html");
 
 // ─── Captured OAuth code ──────────────────────────────────────────────────────
 
@@ -312,6 +313,10 @@ fn build_tools() -> Vec<Tool> {
             "Get the underlying bank transaction for a completed payment.",
             &[p("payment_id", "string", "Payment UUID")],
             &["payment_id"], None),
+
+        make_tool("payment_form",
+            "Open an interactive payment creation form. The user fills in bank, recipient, and amount details, then submits to initiate the payment — no need to gather params conversationally. Renders an interactive form inline in the chat (claude.ai web, Claude Desktop, Cursor). Do NOT create an artifact — the UI renders automatically.",
+            &[], &[], Some(tool_meta("ui://create-payment"))),
     ]
 }
 
@@ -710,6 +715,8 @@ impl EnableBankingServer {
                 api_get!(self.client, token, url)
             }
 
+            "payment_form" => self.ok_ui(json!({}), "create-payment"),
+
             _ => err_result(format!("Unknown tool: {name}")),
         }
     }
@@ -780,12 +787,13 @@ impl ServerHandler for EnableBankingServer {
         };
         let mut result = ListResourcesResult::default();
         result.resources = vec![
-            make_res("ui://balances",     "Balance Dashboard",   "Visual balance cards for bank accounts"),
-            make_res("ui://transactions", "Transaction Table",   "Sortable, searchable transaction viewer"),
-            make_res("ui://spending",     "Spending Chart",      "Category spending breakdown bar chart"),
-            make_res("ui://sessions",     "Sessions Dashboard",  "Overview cards for all saved sessions"),
-            make_res("ui://accounts",     "Account List",        "Account UIDs for a session with status"),
-            make_res("ui://payment",      "Payment Status",      "Payment details with status timeline"),
+            make_res("ui://balances",        "Balance Dashboard",      "Visual balance cards for bank accounts"),
+            make_res("ui://transactions",   "Transaction Table",      "Sortable, searchable transaction viewer"),
+            make_res("ui://spending",       "Spending Chart",         "Category spending breakdown bar chart"),
+            make_res("ui://sessions",       "Sessions Dashboard",     "Overview cards for all saved sessions"),
+            make_res("ui://accounts",       "Account List",           "Account UIDs for a session with status"),
+            make_res("ui://payment",        "Payment Status",         "Payment details with status timeline"),
+            make_res("ui://create-payment", "Payment Creation Form",  "Interactive form to initiate a new bank payment"),
         ];
         Ok(result)
     }
@@ -807,7 +815,9 @@ impl ServerHandler for EnableBankingServer {
         } else if uri_str.starts_with("ui://accounts") {
             (HTML_ACCOUNTS,     "text/html;profile=mcp-app")
         } else if uri_str.starts_with("ui://payment") {
-            (HTML_PAYMENT,      "text/html;profile=mcp-app")
+            (HTML_PAYMENT,         "text/html;profile=mcp-app")
+        } else if uri_str.starts_with("ui://create-payment") {
+            (HTML_CREATE_PAYMENT,  "text/html;profile=mcp-app")
         } else {
             return Err(McpError::invalid_params(
                 format!("Unknown resource: {uri_str}"), None,
