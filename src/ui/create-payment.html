@@ -240,9 +240,9 @@
     <div class="result-sub">Copy the URL below and open it in your browser to authorise</div>
   </div>
   <div class="auth-link-box">
-    <div class="auth-link-label">Bank Authorisation URL</div>
-    <div id="auth-url-text" class="auth-link" style="word-break:break-all;user-select:all;cursor:text"></div>
-    <button class="open-btn" onclick="copyAuthUrl()" id="copy-url-btn" style="margin-top:8px">Copy URL</button>
+    <div class="auth-link-label">Bank Authorisation URL — click to select, then Cmd+C / Ctrl+C</div>
+    <input id="auth-url-text" type="text" readonly onclick="this.select()"
+      style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--blue);padding:8px 10px;font-size:11px;font-family:ui-monospace,monospace;word-break:break-all;cursor:pointer;outline:none">
   </div>
   <div class="pid-label" style="margin-top:12px">Payment ID</div>
   <div class="pid-box" id="pid-box" title="Click to select"></div>
@@ -279,20 +279,17 @@ function showResult(authUrl, paymentId) {
   document.getElementById('form-panel').style.display = 'none';
   document.getElementById('result-panel').style.display = 'block';
   _currentAuthUrl = authUrl || null;
-  document.getElementById('auth-url-text').textContent = authUrl || '—';
+  document.getElementById('auth-url-text').value = authUrl || '—';
   document.getElementById('pid-box').textContent = paymentId || '—';
   // Best-effort open (works if sandbox allows popups)
   if (authUrl) { try { window.open(authUrl, '_blank', 'noopener'); } catch(_) {} }
 }
 function copyAuthUrl() {
-  if (!_currentAuthUrl) return;
-  navigator.clipboard.writeText(_currentAuthUrl).catch(() => {
-    const ta = document.createElement('textarea');
-    ta.value = _currentAuthUrl; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
-  });
+  const inp = document.getElementById('auth-url-text');
+  inp.select();
+  try { document.execCommand('copy'); } catch(_) {}
   const btn = document.getElementById('copy-url-btn');
-  const orig = btn.textContent; btn.textContent = 'Copied!';
-  setTimeout(() => btn.textContent = orig, 1500);
+  if (btn) { const orig = btn.textContent; btn.textContent = 'Copied!'; setTimeout(() => btn.textContent = orig, 1500); }
 }
 
 function loadAccounts() {

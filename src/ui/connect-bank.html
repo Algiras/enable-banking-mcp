@@ -453,7 +453,9 @@
   <div class="step" id="step2">
     <p style="font-size:13px;color:var(--muted);margin-bottom:14px">Open the link below to log in to your bank, then wait for this page to detect the authorisation.</p>
     <button class="btn-green" id="auth-link" onclick="copyAndOpen()">Copy Auth URL</button>
-    <div class="auth-url-box" id="auth-url-display" title="Click to select — then paste in browser" style="cursor:text;user-select:all"></div>
+    <input type="text" readonly id="auth-url-display" onclick="this.select()"
+      title="Click to select, then Cmd+C / Ctrl+C to copy"
+      style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--blue);padding:8px 10px;font-size:11px;font-family:ui-monospace,monospace;cursor:pointer;outline:none;margin-top:8px">
 
     <div class="spinner-row">
       <div class="spinner" id="poll-spinner"></div>
@@ -696,7 +698,7 @@
     function enterStep2() {
       showStep(2);
 
-      document.getElementById('auth-url-display').textContent = authUrl;
+      document.getElementById('auth-url-display').value = authUrl;
       try { window.open(authUrl, '_blank', 'noopener'); } catch(_) {}
       document.getElementById('timeout-msg').style.display = 'none';
 
@@ -743,14 +745,12 @@
 
     function copyAndOpen() {
       if (!authUrl) return;
-      navigator.clipboard.writeText(authUrl).catch(() => {
-        const ta = document.createElement('textarea');
-        ta.value = authUrl; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
-      });
+      const inp = document.getElementById('auth-url-display');
+      inp.select();
+      try { document.execCommand('copy'); } catch(_) {}
       const btn = document.getElementById('auth-link');
       const orig = btn.textContent; btn.textContent = 'Copied!';
       setTimeout(() => btn.textContent = orig, 1500);
-      try { window.open(authUrl, '_blank', 'noopener'); } catch(_) {}
     }
 
     function stopPolling() {
