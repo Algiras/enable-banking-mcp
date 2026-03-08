@@ -344,8 +344,8 @@ document.getElementById('form').addEventListener('submit', function(e) {
     const text = result?.content?.[0]?.text || '';
     let authUrl = null, paymentId = null;
     try {
-      const parsed = JSON.parse(text);
-      authUrl   = parsed.auth_url || parsed.redirect_url || parsed.authorization_url || parsed.url;
+      const parsed = result?.structuredContent || JSON.parse(text);
+      authUrl   = parsed.aspsp_redirect_url || parsed.auth_url || parsed.redirect_url || parsed.authorization_url || parsed.url;
       paymentId = parsed.payment_id || parsed.id;
     } catch {
       const match = text.match(/https?:\/\/\S+/);

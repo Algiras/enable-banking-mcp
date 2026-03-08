@@ -441,7 +441,7 @@
       </div>
       <div class="field">
         <label>Redirect URL</label>
-        <input type="text" id="redirect-url" value="https://algiras.github.io/enable-banking-mcp/callback" />
+        <input type="text" id="redirect-url" value="https://localhost:8080/callback" />
       </div>
       <div style="display:flex;justify-content:flex-end;margin-top:4px">
         <button class="btn" id="connect-btn" disabled onclick="startConnect()">Connect →</button>
@@ -462,7 +462,12 @@
     </div>
 
     <div class="timeout-msg" id="timeout-msg">
-      Timed out after 120 seconds. Please try again.
+      Auto-detection timed out. Paste the callback URL or code below:
+      <div style="display:flex;gap:6px;margin-top:8px">
+        <input type="text" id="manual-code-input" placeholder="Paste callback URL or code…"
+          style="flex:1;background:var(--surface);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:6px 10px;font-size:12px;outline:none" />
+        <button class="btn" onclick="submitManualCode()">Submit</button>
+      </div>
     </div>
 
     <div class="step2-actions">
@@ -739,6 +744,20 @@
     function stopPolling() {
       if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
       if (elapsedInterval) { clearInterval(elapsedInterval); elapsedInterval = null; }
+    }
+
+    function submitManualCode() {
+      const raw = document.getElementById('manual-code-input').value.trim();
+      if (!raw) return;
+      callTool('get_captured_code', { code_or_url: raw }, function(result, err) {
+        if (err || result?.isError) return;
+        try {
+          const text = result?.content?.[0]?.text ?? '';
+          const parsed = result?.structuredContent || JSON.parse(text);
+          const code = parsed?.code;
+          if (code) { stopPolling(); capturedCode = code; enterStep3(); }
+        } catch (_) {}
+      });
     }
 
     function cancelAuth() {
