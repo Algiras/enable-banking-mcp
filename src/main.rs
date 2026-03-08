@@ -12,7 +12,7 @@ use std::path::PathBuf;
 use std::env;
 
 use api::{BlockingApiClient, AuthRequest, PsuHeaders};
-use server::{EnableBankingServer, generate_jwt, start_callback_listener, CAPTURED_CODE};
+use server::{EnableBankingServer, generate_jwt, write_env_file};
 
 // ─── Entry point ──────────────────────────────────────────────────────────────
 
@@ -37,6 +37,11 @@ fn main() -> anyhow::Result<()> {
 }
 
 async fn async_main() -> anyhow::Result<()> {
+    tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env()
+            .add_directive("enable_banking_mcp=info".parse().unwrap()))
+        .with_writer(std::io::stderr)
+        .init();
     dotenv().ok();
 
     let srv = EnableBankingServer::from_env();
@@ -54,7 +59,7 @@ async fn async_main() -> anyhow::Result<()> {
 
 async fn run_stdio(srv: EnableBankingServer) -> anyhow::Result<()> {
     use rmcp::ServiceExt;
-    eprintln!("Enable Banking MCP Server (rmcp) — stdio ready");
+    tracing::info!("Enable Banking MCP Server — stdio ready");
     srv.serve(rmcp::transport::stdio()).await?.waiting().await?;
     Ok(())
 }
@@ -161,8 +166,8 @@ fn run_configure(auto_install: bool) {
             "ENABLE_BANKING_ENV={}\nENABLE_BANKING_APP_ID={}\nENABLE_BANKING_PRIVATE_KEY=\"{}\"\n",
             env_mode, app_id, env_key
         );
-        match std::fs::write(".env", content) {
-            Ok(_)  => println!(".env saved successfully."),
+        match write_env_file(".env", &content) {
+            Ok(_)  => println!(".env saved successfully (owner-only permissions)."),
             Err(e) => println!("Error saving .env: {}", e),
         }
     }
@@ -215,11 +220,11 @@ fn run_register() {
     let name = name.trim();
 
     let mut redirect = String::new();
-    print!("Redirect URL [https://localhost:8080/callback]: ");
+    print!("Redirect URL [https://algiras.github.io/enable-banking-mcp/callback]: ");
     io::stdout().flush().ok();
     io::stdin().read_line(&mut redirect).ok();
     let redirect = redirect.trim();
-    let redirect = if redirect.is_empty() { "https://localhost:8080/callback" } else { redirect };
+    let redirect = if redirect.is_empty() { "https://algiras.github.io/enable-banking-mcp/callback" } else { redirect };
 
     let mut desc = String::new();
     print!("Description: ");
@@ -265,8 +270,8 @@ fn run_register() {
             let content = format!(
                 "ENABLE_BANKING_ENV=production\nENABLE_BANKING_APP_ID={app_id}\nENABLE_BANKING_PRIVATE_KEY=\"{env_key}\"\nENABLE_BANKING_REDIRECT_URL={redirect}\n"
             );
-            if std::fs::write(".env", content).is_ok() {
-                println!(".env saved with production credentials.");
+            if write_env_file(".env", &content).is_ok() {
+                println!(".env saved with production credentials (owner-only permissions).");
             }
         }
         Ok(r)  => println!("\n❌ Registration failed: {}", r.text().unwrap_or_default()),
@@ -311,37 +316,27 @@ fn run_init() {
     let bank_name = bank_list[idx - 1]["name"].as_str().unwrap();
     let state = uuid::Uuid::new_v4().to_string();
     let redirect_url = env::var("ENABLE_BANKING_REDIRECT_URL")
-        .unwrap_or_else(|_| "https://localhost:8080/callback".to_string());
-    let is_https   = redirect_url.starts_with("https://");
-    let is_localhost = redirect_url.contains("localhost") || redirect_url.contains("127.0.0.1");
+        .unwrap_or_else(|_| "https://algiras.github.io/enable-banking-mcp/callback".to_string());
 
     let auth_req = AuthRequest::new(bank_name, country, &state, &redirect_url, "personal", None, None, None);
     let auth_res = client.post(&token, &format!("{base}/auth"), &auth_req).expect("Failed to initiate auth");
     let auth_url = auth_res["url"].as_str().expect("No auth URL in response");
 
     println!("\n--- Open this URL in your browser ---\n{auth_url}");
+    println!("\nAfter authorising, paste the full callback URL (or just the code) here:");
 
-    let code = if is_localhost {
-        println!("\nWaiting for callback on {redirect_url}...");
-        let addr_part = redirect_url.split("//").nth(1)
-            .and_then(|s| s.split('/').next())
-            .unwrap_or("localhost:8080");
-        let addr = if addr_part.contains(':') { addr_part.to_string() } else { format!("{addr_part}:8080") };
-        let captured = std::sync::Arc::clone(&CAPTURED_CODE);
-        start_callback_listener(&addr, is_https, captured);
-        match CAPTURED_CODE.lock().unwrap().take() {
-            Some(c) => { println!("✅ Code captured!"); c }
-            None    => { println!("❌ Failed to capture code."); return; }
-        }
+    let mut cb_url = String::new();
+    io::stdin().read_line(&mut cb_url).ok();
+    let cb_url = cb_url.trim();
+    let code = if cb_url.contains("code=") {
+        cb_url.split("code=").nth(1)
+            .and_then(|s| s.split('&').next())
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| { println!("Could not find 'code' in URL."); String::new() })
     } else {
-        println!("\nAfter authorising, paste the FULL redirect URL here:");
-        let mut cb_url = String::new();
-        io::stdin().read_line(&mut cb_url).ok();
-        match cb_url.split("code=").nth(1).and_then(|s| s.split('&').next()) {
-            Some(c) => c.to_string(),
-            None    => { println!("Could not find 'code' in URL."); return; }
-        }
+        cb_url.to_string()
     };
+    if code.is_empty() { return; }
 
     println!("Exchanging code for session...");
     let sess_req = api::CreateSessionRequest { code: code.clone() };

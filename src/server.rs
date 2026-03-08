@@ -17,6 +17,23 @@ use serde_json::{Value, json};
 use crate::api::{ApiClient, AuthRequest, CreateSessionRequest, PaymentRequest, PsuHeaders, TransactionQuery};
 use crate::{sessions, tools};
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/// Write a credentials file with owner-only permissions (0600 on Unix).
+pub fn write_env_file(path: &str, content: &str) -> std::io::Result<()> {
+    use std::io::Write;
+    let mut opts = std::fs::OpenOptions::new();
+    opts.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        opts.mode(0o600);
+    }
+    let mut f = opts.open(path)?;
+    f.write_all(content.as_bytes())?;
+    Ok(())
+}
+
 // ─── HTML resources ───────────────────────────────────────────────────────────
 
 static HTML_BALANCES:     &str = include_str!("ui/balances.html");
@@ -154,22 +171,23 @@ fn build_tools() -> Vec<Tool> {
             &[], &[], None),
 
         make_tool("start_authorization",
-            "Start an OAuth bank authorization flow. Returns a redirect URL for the user. A background listener is automatically started to capture the code when you return.",
+            "Start an OAuth bank authorization flow. Opens the bank login page. After the user approves, the bank redirects to the callback URL where the authorization code can be copied.",
             &[
-                p("bank_name",    "string", "Bank name (e.g. Nordea)"),
-                p("country",      "string", "Two-letter country code (e.g. FI)"),
+                p("bank_name",    "string", "Bank name (e.g. Nordea, Swedbank)"),
+                p("country",      "string", "Two-letter country code (e.g. FI, LT, SE)"),
                 p("state",        "string", "Unique UUID state for CSRF protection"),
-                p("redirect_url", "string", "URL to redirect back to after bank login"),
+                pd("redirect_url","string", "Callback URL after bank login. Defaults to the GitHub Pages callback page.", "https://algiras.github.io/enable-banking-mcp/callback"),
                 pd("psu_type",    "string", "personal or business", "personal"),
                 p("auth_method",  "string", "Bank-specific auth method override. Leave empty for default."),
                 p("language",     "string", "Preferred PSU language, two-letter lowercase code, e.g. en, fi, de"),
                 p("psu_id",       "string", "Anonymised PSU identifier to match sessions of the same user"),
             ],
-            &["bank_name", "country", "state", "redirect_url"], None),
+            &["bank_name", "country", "state"], None),
 
         make_tool("get_captured_code",
-            "Check if the background listener has successfully captured an authorization code after a bank redirect.",
-            &[], &[], None),
+            "Retrieve the OAuth authorization code. Pass the full callback URL from the browser (or just the code itself) as `code_or_url`. If using a localhost redirect, leave it empty to read from the background listener.",
+            &[p("code_or_url", "string", "The full callback URL (e.g. https://algiras.github.io/enable-banking-mcp/callback?code=...) or the raw code string")],
+            &[], None),
 
         make_tool("configure_secrets",
             "Configure missing Enable Banking API secrets (App ID and Private Key). This saves them directly to .env without exposing them in chat history.",
@@ -362,11 +380,12 @@ impl EnableBankingServer {
 
             "get_available_banks" => {
                 let token = match self.jwt() { Ok(t) => t, Err(e) => return err_result(e) };
+                let enc = |s: &str| -> String { url::form_urlencoded::byte_serialize(s.as_bytes()).collect() };
                 let mut qs: Vec<String> = vec![];
-                if let Some(v) = args.opt_str("country")      { qs.push(format!("country={v}")); }
-                if let Some(v) = args.opt_str("psu_type")     { qs.push(format!("psu_type={v}")); }
-                if let Some(v) = args.opt_str("service")      { qs.push(format!("service={v}")); }
-                if let Some(v) = args.opt_str("payment_type") { qs.push(format!("payment_type={v}")); }
+                if let Some(v) = args.opt_str("country")      { qs.push(format!("country={}", enc(&v))); }
+                if let Some(v) = args.opt_str("psu_type")     { qs.push(format!("psu_type={}", enc(&v))); }
+                if let Some(v) = args.opt_str("service")      { qs.push(format!("service={}", enc(&v))); }
+                if let Some(v) = args.opt_str("payment_type") { qs.push(format!("payment_type={}", enc(&v))); }
                 let url = if qs.is_empty() {
                     format!("{}/aspsps", self.base)
                 } else {
@@ -383,10 +402,12 @@ impl EnableBankingServer {
 
             "start_authorization" => {
                 let token = match self.jwt() { Ok(t) => t, Err(e) => return err_result(e) };
-                let r_url = args.str("redirect_url");
+                let r_url = args.opt_str("redirect_url")
+                    .unwrap_or_else(|| "https://algiras.github.io/enable-banking-mcp/callback".to_string());
+                let state = args.str("state");
                 let body = AuthRequest::new(
                     &args.str("bank_name"), &args.str("country"),
-                    &args.str("state"), &r_url,
+                    &state, &r_url,
                     args.opt_str("psu_type").as_deref().unwrap_or("personal"),
                     args.opt_str("auth_method").as_deref(),
                     args.opt_str("language").as_deref(),
@@ -395,26 +416,55 @@ impl EnableBankingServer {
                 let url = format!("{}/auth", self.base);
                 match self.client.post(&token, &url, &body).await {
                     Ok(d) => {
-                        let captured  = Arc::clone(&CAPTURED_CODE);
-                        let is_https  = r_url.starts_with("https://");
-                        let addr_part = r_url.split("//").nth(1)
-                            .and_then(|s| s.split('/').next())
-                            .unwrap_or("localhost:8080");
-                        let addr = if addr_part.contains(':') {
-                            addr_part.to_string()
+                        let is_localhost = r_url.contains("localhost") || r_url.contains("127.0.0.1");
+                        if is_localhost {
+                            let captured  = Arc::clone(&CAPTURED_CODE);
+                            let is_https  = r_url.starts_with("https://");
+                            let addr_part = r_url.split("//").nth(1)
+                                .and_then(|s| s.split('/').next())
+                                .unwrap_or("localhost:8080");
+                            let addr = if addr_part.contains(':') {
+                                addr_part.to_string()
+                            } else {
+                                format!("{addr_part}:8080")
+                            };
+                            std::thread::spawn(move || {
+                                start_callback_listener(&addr, is_https, captured);
+                            });
+                            ok_result(d)
                         } else {
-                            format!("{addr_part}:8080")
-                        };
-                        std::thread::spawn(move || {
-                            start_callback_listener(&addr, is_https, captured);
-                        });
-                        ok_result(d)
+                            let auth_url = d["url"].as_str().unwrap_or("(no url)");
+                            ok_str(format!(
+                                "Open this URL in your browser to authorise:\n\n{auth_url}\n\n\
+                                After logging in, the bank will redirect to:\n  {r_url}\n\n\
+                                The page will display your authorization code. Copy it and call \
+                                `get_captured_code` with the full callback URL or just the code."
+                            ))
+                        }
                     }
                     Err(e) => err_result(e.to_string()),
                 }
             }
 
             "get_captured_code" => {
+                // If caller provides a code or full callback URL, extract code from it
+                if let Some(input) = args.opt_str("code_or_url") {
+                    let code = if input.contains("code=") {
+                        url::Url::parse(&input).ok()
+                            .and_then(|u| u.query_pairs().find(|(k, _)| k == "code").map(|(_, v)| v.to_string()))
+                            .or_else(|| input.split("code=").nth(1)
+                                .map(|s| s.split('&').next().unwrap_or(s).to_string()))
+                            .unwrap_or_else(|| input.clone())
+                    } else {
+                        input
+                    };
+                    return if code.is_empty() {
+                        err_result("Could not extract code from the provided input.")
+                    } else {
+                        ok_result(json!({ "code": code }))
+                    };
+                }
+                // Fallback: check the localhost listener's captured code
                 let mut lock = CAPTURED_CODE.lock().unwrap();
                 match lock.take() {
                     Some(val) if val.starts_with("ERROR:") => {
@@ -430,7 +480,10 @@ impl EnableBankingServer {
                         err_result(msg)
                     }
                     Some(code) => ok_result(json!({ "code": code })),
-                    None       => err_result("No code captured yet. Please authorise in your browser first."),
+                    None => err_result(
+                        "No code available. If using the GitHub Pages callback, call this tool with \
+                         the full redirect URL or just the code as `code_or_url`."
+                    ),
                 }
             }
 
@@ -442,8 +495,8 @@ impl EnableBankingServer {
                     "ENABLE_BANKING_ENV={}\nENABLE_BANKING_APP_ID={aid}\nENABLE_BANKING_PRIVATE_KEY=\"{pk_fmt}\"\n",
                     self.env_mode,
                 );
-                match std::fs::write(".env", content) {
-                    Ok(_)  => ok_str("Successfully saved credentials to .env. Please restart Claude Desktop if the new configuration has not applied."),
+                match write_env_file(".env", &content) {
+                    Ok(_)  => ok_str("Successfully saved credentials to .env (permissions: owner-only). Please restart Claude Desktop if the new configuration has not applied."),
                     Err(e) => err_result(format!("Failed to save .env: {e}")),
                 }
             }

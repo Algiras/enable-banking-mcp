@@ -5,6 +5,21 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::path::PathBuf;
 
+/// Write a file with 0600 permissions (owner read/write only).
+fn write_private(path: &std::path::Path, content: &str) -> Result<()> {
+    use std::io::Write;
+    let mut opts = std::fs::OpenOptions::new();
+    opts.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        opts.mode(0o600);
+    }
+    let mut f = opts.open(path)?;
+    f.write_all(content.as_bytes())?;
+    Ok(())
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct SavedSession {
     pub session_id: String,
@@ -25,6 +40,13 @@ fn sessions_path() -> Result<PathBuf> {
     let dir = dirs::home_dir()
         .ok_or_else(|| anyhow::anyhow!("Cannot find home directory"))?
         .join(".enable-banking");
+    // Create directory with restricted permissions (0700 on Unix)
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        std::fs::DirBuilder::new().recursive(true).mode(0o700).create(&dir)?;
+    }
+    #[cfg(not(unix))]
     std::fs::create_dir_all(&dir)?;
     Ok(dir.join("sessions.json"))
 }
@@ -47,7 +69,7 @@ pub fn save_session(new: SavedSession) -> Result<()> {
         sessions.push(new);
     }
     let json = serde_json::to_string_pretty(&sessions)?;
-    std::fs::write(path, json)?;
+    write_private(&path, &json)?;
     Ok(())
 }
 
@@ -55,7 +77,7 @@ pub fn remove_session(session_id: &str) -> Result<()> {
     let path = sessions_path()?;
     let mut sessions = load_sessions();
     sessions.retain(|s| s.session_id != session_id);
-    std::fs::write(path, serde_json::to_string_pretty(&sessions)?)?;
+    write_private(&path, &serde_json::to_string_pretty(&sessions)?)?;
     Ok(())
 }
 

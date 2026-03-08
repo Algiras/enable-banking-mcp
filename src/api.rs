@@ -6,6 +6,10 @@ use reqwest::{Client, RequestBuilder};
 use serde::Serialize;
 use serde_json::{json, Value};
 
+const REQUEST_TIMEOUT_SECS: u64 = 30;
+const MAX_PAGES: u32 = 100;
+const MAX_TRANSACTIONS: usize = 10_000;
+
 // ─── PSU headers ──────────────────────────────────────────────────────────────
 
 #[derive(Clone, Default)]
@@ -184,12 +188,15 @@ pub struct TransactionQuery {
 
 impl TransactionQuery {
     pub fn build_url(&self, base: &str, account_id: &str, session_id: &str) -> String {
-        let mut qs: Vec<String> = vec![format!("session_id={session_id}")];
-        if let Some(v) = &self.date_from          { qs.push(format!("date_from={v}")); }
-        if let Some(v) = &self.date_to            { qs.push(format!("date_to={v}")); }
-        if let Some(v) = &self.transaction_status { qs.push(format!("transaction_status={v}")); }
-        if let Some(v) = &self.fetch_strategy     { qs.push(format!("transaction_fetch_strategy={v}")); }
-        format!("{base}/accounts/{account_id}/transactions?{}", qs.join("&"))
+        fn enc(s: &str) -> String {
+            url::form_urlencoded::byte_serialize(s.as_bytes()).collect()
+        }
+        let mut qs: Vec<String> = vec![format!("session_id={}", enc(session_id))];
+        if let Some(v) = &self.date_from          { qs.push(format!("date_from={}", enc(v))); }
+        if let Some(v) = &self.date_to            { qs.push(format!("date_to={}", enc(v))); }
+        if let Some(v) = &self.transaction_status { qs.push(format!("transaction_status={}", enc(v))); }
+        if let Some(v) = &self.fetch_strategy     { qs.push(format!("transaction_fetch_strategy={}", enc(v))); }
+        format!("{base}/accounts/{}/transactions?{}", enc(account_id), qs.join("&"))
     }
 }
 
@@ -204,7 +211,11 @@ pub struct ApiClient {
 
 impl ApiClient {
     pub fn new(psu: PsuHeaders, base_url: &str) -> Self {
-        Self { http: Client::new(), base: base_url.to_string(), psu }
+        let http = Client::builder()
+            .timeout(std::time::Duration::from_secs(REQUEST_TIMEOUT_SECS))
+            .build()
+            .expect("failed to build HTTP client");
+        Self { http, base: base_url.to_string(), psu }
     }
 
     fn auth_header(token: &str) -> String { format!("Bearer {token}") }
@@ -267,21 +278,32 @@ impl ApiClient {
             }
             pages_fetched += 1;
 
+            if pages_fetched >= MAX_PAGES {
+                tracing::warn!("Reached MAX_PAGES ({MAX_PAGES}) pagination limit");
+                break;
+            }
+            if all_txns.len() >= MAX_TRANSACTIONS {
+                tracing::warn!("Reached MAX_TRANSACTIONS ({MAX_TRANSACTIONS}) limit");
+                break;
+            }
+
             match page["continuation_key"].as_str() {
                 Some(key) if !key.is_empty() => {
+                    let encoded_key: String = url::form_urlencoded::byte_serialize(key.as_bytes()).collect();
                     url = if url.contains('?') {
-                        format!("{url}&continuation_key={key}")
+                        format!("{url}&continuation_key={encoded_key}")
                     } else {
-                        format!("{url}?continuation_key={key}")
+                        format!("{url}?continuation_key={encoded_key}")
                     };
                 }
                 _ => break,
             }
         }
 
+        let total = all_txns.len();
         Ok(json!({
             "transactions":  all_txns,
-            "total_count":   all_txns.len(),
+            "total_count":   total,
             "pages_fetched": pages_fetched,
         }))
     }
@@ -297,7 +319,11 @@ pub struct BlockingApiClient {
 
 impl BlockingApiClient {
     pub fn new(psu: PsuHeaders, base_url: &str) -> Self {
-        Self { http: reqwest::blocking::Client::new(), base: base_url.to_string(), psu }
+        let http = reqwest::blocking::Client::builder()
+            .timeout(std::time::Duration::from_secs(REQUEST_TIMEOUT_SECS))
+            .build()
+            .expect("failed to build blocking HTTP client");
+        Self { http, base: base_url.to_string(), psu }
     }
 
     fn apply(&self, mut rb: reqwest::blocking::RequestBuilder) -> reqwest::blocking::RequestBuilder {

@@ -70,7 +70,7 @@ flowchart LR
 
 ## How It Works
 
-The server runs as an MCP stdio process. Your AI assistant calls tools like `start_authorization`, `create_session`, `get_account_balances`, etc. It handles OAuth redirect capture automatically by spinning up a local HTTPS listener on port 8080.
+The server runs as an MCP stdio process. Your AI assistant calls tools like `start_authorization`, `create_session`, `get_account_balances`, etc. After bank login, the OAuth code is shown on a GitHub Pages page — no local server required.
 
 ```mermaid
 flowchart LR
@@ -79,8 +79,8 @@ flowchart LR
     C -- "bank data" --> B
     B -- "OAuth URL" --> D(["🌐 Browser"])
     D -- "user logs in" --> E(["🏛️ Bank"])
-    E -- "redirect + code\nhttps://localhost:8080/callback" --> F["🔒 Local HTTPS\nListener :8080"]
-    F -- "captured code" --> B
+    E -- "redirect + code" --> F(["📄 GitHub Pages\nalgiras.github.io/enable-banking-mcp/callback"])
+    F -- "user copies code" --> A
 ```
 
 ---
@@ -102,8 +102,7 @@ File: `%APPDATA%\Claude\claude_desktop_config.json` (Windows)
       "env": {
         "ENABLE_BANKING_ENV": "sandbox",
         "ENABLE_BANKING_APP_ID": "your-app-id",
-        "ENABLE_BANKING_PRIVATE_KEY": "-----BEGIN PRIVATE KEY-----\nMIIJ...\n-----END PRIVATE KEY-----",
-        "ENABLE_BANKING_REDIRECT_URL": "https://localhost:8080/callback"
+        "ENABLE_BANKING_PRIVATE_KEY": "-----BEGIN PRIVATE KEY-----\nMIIJ...\n-----END PRIVATE KEY-----"
       }
     }
   }
@@ -121,8 +120,7 @@ File: `%APPDATA%\Claude\claude_desktop_config.json` (Windows)
       "env": {
         "ENABLE_BANKING_ENV": "sandbox",
         "ENABLE_BANKING_APP_ID": "your-app-id",
-        "ENABLE_BANKING_PRIVATE_KEY": "-----BEGIN PRIVATE KEY-----\nMIIJ...\n-----END PRIVATE KEY-----",
-        "ENABLE_BANKING_REDIRECT_URL": "https://localhost:8080/callback"
+        "ENABLE_BANKING_PRIVATE_KEY": "-----BEGIN PRIVATE KEY-----\nMIIJ...\n-----END PRIVATE KEY-----"
       }
     }
   }
@@ -137,7 +135,6 @@ Place a `.env` file in the directory you run the binary from:
 ENABLE_BANKING_ENV=sandbox
 ENABLE_BANKING_APP_ID=your-app-id
 ENABLE_BANKING_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nMIIJ...\n-----END PRIVATE KEY-----"
-ENABLE_BANKING_REDIRECT_URL=https://localhost:8080/callback
 ```
 
 > **Note:** Newlines in the private key must be escaped as `\n` on a single line.
@@ -174,14 +171,13 @@ Use this to test without a real bank account. Enable Banking provides mock banks
 flowchart TD
     A(["Start"]) --> B["1. Get Sandbox credentials\nfrom enablebanking.com/cp"]
     B --> C["2. Create .env file\nENABLE_BANKING_ENV=sandbox"]
-    C --> D["3. Open https://localhost:8080\nin browser → Accept cert"]
-    D --> E["4. run: enable-banking-mcp init\nOR ask AI to start_authorization"]
-    E --> F["5. Log in with sandbox\ntest user in browser"]
-    F --> G["Browser redirects to\nhttps://localhost:8080/callback"]
-    G --> H["Code captured automatically"]
-    H --> I["Session created &\nsaved locally"]
-    I --> J["6. enable-banking-mcp install"]
-    J --> K(["✅ Ready"])
+    C --> D["3. run: enable-banking-mcp init\nOR ask AI to start_authorization"]
+    D --> E["4. Log in with sandbox\ntest user in browser"]
+    E --> F["Browser redirects to\nalgiras.github.io/enable-banking-mcp/callback"]
+    F --> G["Copy the code shown\nand paste it back to AI"]
+    G --> H["Session created &\nsaved locally"]
+    H --> I["5. enable-banking-mcp install"]
+    I --> J(["✅ Ready"])
 ```
 
 ### 1. Create a Sandbox Application in the Control Panel
@@ -192,7 +188,7 @@ flowchart TD
 4. Fill in the form:
    - **Name** — any name, e.g. `My MCP Sandbox`
    - **Environment** — select **Sandbox**
-   - **Redirect URL** — enter `https://localhost:8080/callback`
+   - **Redirect URL** — enter `https://algiras.github.io/enable-banking-mcp/callback`
    - Description, privacy policy URL — can be placeholder values for sandbox
 5. Click **Create**
 6. On the application detail page, note your **Application ID** (UUID)
@@ -208,7 +204,6 @@ Create a `.env` file in the project root:
 ENABLE_BANKING_ENV=sandbox
 ENABLE_BANKING_APP_ID=your-app-id-here
 ENABLE_BANKING_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nMIIJ...your key...\n-----END PRIVATE KEY-----"
-ENABLE_BANKING_REDIRECT_URL=https://localhost:8080/callback
 ```
 
 > **Note:** Newlines in the private key must be escaped as `\n` when placed on a single line in `.env`.
@@ -219,15 +214,7 @@ Or run the interactive wizard:
 ./target/release/enable-banking-mcp configure
 ```
 
-### 3. Accept the Local Certificate (One-Time)
-
-The OAuth callback listener uses a self-signed HTTPS certificate. Before the first authorization, open this in your browser and click **Advanced → Proceed to localhost**:
-
-```
-https://localhost:8080
-```
-
-### 4. Connect a Sandbox Bank
+### 3. Connect a Sandbox Bank
 
 Ask your AI assistant to start an authorization flow, or do it manually:
 
@@ -244,7 +231,7 @@ Ask your AI assistant to start an authorization flow, or do it manually:
 
 > **Other countries:** Sandbox test users vary by bank. Ask your AI assistant `"list available banks in <country>"` — the `get_available_banks` tool returns sandbox user credentials in the response for each bank that supports them.
 
-When the browser opens the bank authorization page, log in with the sandbox test credentials. After approval the browser will redirect to `https://localhost:8080/callback` and show **"Authorization Successful"**. The code is captured automatically.
+When the browser opens the bank authorization page, log in with the sandbox test credentials. After approval the browser will redirect to `https://algiras.github.io/enable-banking-mcp/callback` and display the authorization code. Copy it and paste it back to the AI (or call `get_captured_code` with the full URL).
 
 ### 5. Install into Claude Desktop / VS Code
 
@@ -266,14 +253,13 @@ Use this to connect your real bank account.
 flowchart TD
     A(["Start"]) --> B["1. enable-banking-mcp register\nGenerates RSA keys + registers app"]
     B --> C["2. Log in to enablebanking.com/cp\nWhitelist your IBAN"]
-    C --> D["3. Open https://localhost:8080\nin browser → Accept cert"]
-    D --> E["4. enable-banking-mcp init\nSelect your bank + country"]
-    E --> F["Browser opens bank login"]
-    F --> G["Log in & approve access\nat your real bank"]
-    G --> H["Redirect to\nhttps://localhost:8080/callback"]
-    H --> I["Code captured, session created\nsaved to ~/.enable-banking/sessions.json"]
-    I --> J["5. enable-banking-mcp install"]
-    J --> K(["✅ Ready"])
+    C --> D["3. enable-banking-mcp init\nSelect your bank + country"]
+    D --> E["Browser opens bank login"]
+    E --> F["Log in & approve access\nat your real bank"]
+    F --> G["Redirect to\nalgiras.github.io/enable-banking-mcp/callback"]
+    G --> H["Copy code, paste to AI\nsession saved to ~/.enable-banking/sessions.json"]
+    H --> I["4. enable-banking-mcp install"]
+    I --> J(["✅ Ready"])
 ```
 
 ### 1. Create a Production Application in the Control Panel
@@ -283,7 +269,7 @@ flowchart TD
 3. Fill in the form:
    - **Name** — your app name
    - **Environment** — select **Production**
-   - **Redirect URL** — `https://localhost:8080/callback`
+   - **Redirect URL** — `https://algiras.github.io/enable-banking-mcp/callback`
    - **Description**, **Privacy Policy URL**, **Terms URL**, **GDPR contact email** — required for production
 4. Click **Create** — Enable Banking may require a short review for production access
 5. Note your **Application ID** and download your **private key**
@@ -312,14 +298,9 @@ The `register` command writes `.env` automatically. Verify it contains:
 ENABLE_BANKING_ENV=production
 ENABLE_BANKING_APP_ID=your-app-id
 ENABLE_BANKING_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"
-ENABLE_BANKING_REDIRECT_URL=https://localhost:8080/callback
 ```
 
-### 4. Accept the Local Certificate (One-Time)
-
-Same as sandbox — open `https://localhost:8080` in your browser and accept the self-signed certificate warning (**Advanced → Proceed to localhost**).
-
-### 5. Connect Your Bank
+### 4. Connect Your Bank
 
 ```sh
 ./target/release/enable-banking-mcp init
@@ -328,10 +309,10 @@ Same as sandbox — open `https://localhost:8080` in your browser and accept the
 The CLI will:
 1. List available banks in your country
 2. Open the bank's authorization URL in your browser
-3. After you approve, capture the OAuth code from the `https://localhost:8080/callback` redirect automatically
-4. Exchange the code for a session and save it locally
+3. After you approve, the browser redirects to `https://algiras.github.io/enable-banking-mcp/callback` — copy the code shown
+4. Paste the code (or full URL) when prompted — session is saved to `~/.enable-banking/sessions.json`
 
-### 6. Install
+### 5. Install
 
 ```sh
 ./target/release/enable-banking-mcp install
@@ -348,7 +329,7 @@ The CLI will:
 | `ENABLE_BANKING_ENV` | Yes | `sandbox` or `production` |
 | `ENABLE_BANKING_APP_ID` | Yes | Your Enable Banking application ID (UUID) |
 | `ENABLE_BANKING_PRIVATE_KEY` | Yes | RSA private key in PEM format (newlines as `\n`) |
-| `ENABLE_BANKING_REDIRECT_URL` | Yes | OAuth callback URL. Use `https://localhost:8080/callback` |
+| `ENABLE_BANKING_REDIRECT_URL` | No | OAuth callback URL. Defaults to `https://algiras.github.io/enable-banking-mcp/callback` |
 
 These can be set in a `.env` file in the working directory, or as real environment variables.
 
@@ -364,23 +345,22 @@ sequenceDiagram
     participant API as Enable Banking API
     participant Browser as Browser
     participant Bank as Bank
-    participant CB as localhost:8080
+    participant GH as GitHub Pages
 
     User->>AI: "Connect my bank"
     AI->>MCP: start_authorization(bank, country)
     MCP->>API: POST /auth/
     API-->>MCP: { url: "https://tilisy..." }
-    MCP-->>AI: authorization URL
+    MCP-->>AI: authorization URL + instructions
     AI-->>User: "Open this URL in your browser"
-    note over MCP,CB: MCP starts HTTPS listener on :8080
 
     User->>Browser: Opens authorization URL
     Browser->>Bank: User logs in & approves
-    Bank-->>CB: GET /callback?code=abc123
-    CB-->>Browser: "Authorization Successful"
-    note over MCP,CB: Code stored in memory
+    Bank-->>GH: GET /callback?code=abc123
+    GH-->>Browser: Shows code with copy button
+    User->>AI: Pastes code (or full URL)
 
-    AI->>MCP: get_captured_code()
+    AI->>MCP: get_captured_code(code_or_url)
     MCP-->>AI: { code: "abc123" }
     AI->>MCP: create_session(code)
     MCP->>API: POST /sessions/
@@ -394,9 +374,8 @@ sequenceDiagram
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
-| Browser shows SSL warning | Self-signed cert not trusted | Visit `https://localhost:8080`, click *Advanced → Proceed* |
 | `error=server_error` in redirect | Bank-side error (common with Mock ASPSP) | Use a different sandbox bank (e.g. Swedbank) |
-| "No code captured yet" | Redirect didn't reach local server | Check port 8080 is free: `lsof -i :8080` |
+| Code not shown on page | URL query param missing | Check the redirect URL in your Enable Banking app matches exactly |
 | Session already authorized | Code was already used | Start a new `start_authorization` flow |
 
 ---
