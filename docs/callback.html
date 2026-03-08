@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Enable Banking — Authorization</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #07080f;
+      color: #f0f4f8;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .card {
+      background: #0f1117;
+      border: 1px solid #1e2535;
+      border-radius: 16px;
+      padding: 40px 44px;
+      max-width: 560px;
+      width: 100%;
+      text-align: center;
+    }
+    .icon { font-size: 56px; margin-bottom: 20px; }
+    h1 { font-size: 26px; font-weight: 700; margin-bottom: 8px; }
+    .subtitle { font-size: 15px; color: #8892a4; margin-bottom: 32px; line-height: 1.5; }
+    .code-box {
+      background: #0d1117;
+      border: 1px solid #1e2535;
+      border-radius: 10px;
+      padding: 16px 20px;
+      margin-bottom: 16px;
+      text-align: left;
+    }
+    .code-label { font-size: 11px; color: #8892a4; letter-spacing: 0.1em; text-transform: uppercase; margin-bottom: 8px; }
+    .code-value {
+      font-family: "JetBrains Mono", "Fira Code", monospace;
+      font-size: 13px;
+      color: #00c896;
+      word-break: break-all;
+      line-height: 1.6;
+    }
+    .copy-btn {
+      width: 100%;
+      background: #00c896;
+      color: #07080f;
+      border: none;
+      border-radius: 10px;
+      padding: 14px;
+      font-size: 15px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.15s;
+      margin-bottom: 20px;
+    }
+    .copy-btn:hover { background: #00d4aa; }
+    .copy-btn.copied { background: #009d76; }
+    .instruction {
+      font-size: 13px;
+      color: #8892a4;
+      line-height: 1.6;
+      background: #ffffff08;
+      border-radius: 8px;
+      padding: 14px 18px;
+      text-align: left;
+    }
+    .instruction strong { color: #f0f4f8; }
+    .error .icon-char { font-size: 56px; }
+    .error h1 { color: #ff4d6d; }
+  </style>
+</head>
+<body>
+  <div class="card" id="content">
+    <div class="icon">⏳</div>
+    <h1>Checking authorization…</h1>
+  </div>
+
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code');
+    const error = params.get('error');
+    const errorDesc = params.get('error_description');
+    const el = document.getElementById('content');
+
+    if (code) {
+      el.innerHTML = `
+        <div class="icon">✅</div>
+        <h1>Authorization Successful</h1>
+        <p class="subtitle">Copy the code below and paste it into your AI chat.</p>
+        <div class="code-box">
+          <div class="code-label">Authorization Code</div>
+          <div class="code-value" id="code-text">${code}</div>
+        </div>
+        <button class="copy-btn" id="copy-btn" onclick="copyCode()">Copy Code</button>
+        <div class="instruction">
+          In your AI chat, call:<br/>
+          <strong>get_captured_code</strong> — the code was captured automatically,
+          or call <strong>create_session</strong> with the code above and a label like "My Bank".
+        </div>
+      `;
+    } else if (error) {
+      el.innerHTML = `
+        <div class="icon">❌</div>
+        <h1 style="color:#ff4d6d">Authorization Failed</h1>
+        <p class="subtitle">${error}${errorDesc ? ': ' + errorDesc : ''}</p>
+        <div class="instruction">Please go back to your AI chat and try again.</div>
+      `;
+    } else {
+      el.innerHTML = `
+        <div class="icon">🔗</div>
+        <h1>Enable Banking Callback</h1>
+        <p class="subtitle">This page is used as a redirect URL for bank OAuth authorization.<br/>Open the authorization URL from your AI chat to get started.</p>
+      `;
+    }
+
+    function copyCode() {
+      const code = document.getElementById('code-text').textContent;
+      navigator.clipboard.writeText(code).then(() => {
+        const btn = document.getElementById('copy-btn');
+        btn.textContent = '✓ Copied!';
+        btn.classList.add('copied');
+        setTimeout(() => {
+          btn.textContent = 'Copy Code';
+          btn.classList.remove('copied');
+        }, 2000);
+      });
+    }
+  </script>
+</body>
+</html>
