@@ -705,9 +705,11 @@ impl EnableBankingServer {
                     args.opt_str("language").as_deref(),
                 );
                 let url = format!("{}/payments", self.base);
+                let body_json = serde_json::to_string_pretty(&body).unwrap_or_default();
+                eprintln!("[create_payment] POST {url}\n{body_json}");
                 match self.client.post(&token, &url, &body).await {
-                    Ok(d)  => ok_result(d),
-                    Err(e) => err_result(e.to_string()),
+                    Ok(d)  => { eprintln!("[create_payment] OK: {d}"); ok_result(d) }
+                    Err(e) => { eprintln!("[create_payment] ERR: {e}"); err_result(e.to_string()) }
                 }
             }
 

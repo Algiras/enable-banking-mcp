@@ -103,14 +103,15 @@ pub struct PaymentRequest {
 #[derive(Serialize)]
 pub struct PaymentRequestBody {
     pub credit_transfer_transaction: Vec<CreditTransfer>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub debtor_account:  Option<CreditorAccount>,
 }
 
 #[derive(Serialize)]
 pub struct CreditTransfer {
     pub instructed_amount:      Amount,
-    pub beneficiary:            Beneficiary,
+    pub creditor:               Creditor,
+    pub creditor_account:       IbanAccount,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub debtor_account:         Option<IbanAccount>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub remittance_information: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -121,16 +122,10 @@ pub struct CreditTransfer {
 pub struct Amount { pub amount: String, pub currency: String }
 
 #[derive(Serialize)]
-pub struct Beneficiary {
-    pub creditor:         Creditor,
-    pub creditor_account: CreditorAccount,
-}
-
-#[derive(Serialize)]
 pub struct Creditor { pub name: String }
 
 #[derive(Serialize)]
-pub struct CreditorAccount { pub scheme_name: String, pub identification: String }
+pub struct IbanAccount { pub iban: String }
 
 impl PaymentRequest {
     #[allow(clippy::too_many_arguments)]
@@ -153,22 +148,14 @@ impl PaymentRequest {
             webhook_url:  webhook_url.map(str::to_string),
             language:     language.map(str::to_string),
             payment_request: PaymentRequestBody {
-                debtor_account: debtor_iban.map(|iban| CreditorAccount {
-                    scheme_name:    "IBAN".to_string(),
-                    identification: iban.to_string(),
-                }),
                 credit_transfer_transaction: vec![CreditTransfer {
                     instructed_amount: Amount {
                         amount:   amount.to_string(),
                         currency: currency.to_string(),
                     },
-                    beneficiary: Beneficiary {
-                        creditor:         Creditor { name: creditor_name.to_string() },
-                        creditor_account: CreditorAccount {
-                            scheme_name:    "IBAN".to_string(),
-                            identification: creditor_iban.to_string(),
-                        },
-                    },
+                    creditor:         Creditor { name: creditor_name.to_string() },
+                    creditor_account: IbanAccount { iban: creditor_iban.to_string() },
+                    debtor_account:   debtor_iban.map(|iban| IbanAccount { iban: iban.to_string() }),
                     remittance_information: if remittance.is_empty() { vec![] } else { vec![remittance.to_string()] },
                     requested_execution_date: execution_date.map(str::to_string),
                 }],

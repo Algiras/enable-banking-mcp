@@ -197,9 +197,19 @@
     <div class="section">
       <div class="section-title">From Account <span class="optional" style="text-transform:none;letter-spacing:0">optional</span></div>
       <div class="fields">
+        <div class="field full" style="display:flex;gap:6px;align-items:flex-end">
+          <div style="flex:1">
+            <label>Session ID <span class="optional">to load your accounts</span></label>
+            <input id="session-id-input" type="text" placeholder="Paste session_id…" style="font-family:ui-monospace,monospace;font-size:11px">
+          </div>
+          <button type="button" id="load-accounts-btn" onclick="loadAccounts()" style="height:34px;padding:0 12px;background:var(--surface);border:1px solid var(--border);border-radius:7px;color:var(--text);cursor:pointer;font-size:12px;white-space:nowrap;flex-shrink:0">Load ↓</button>
+        </div>
         <div class="field full">
           <label>Your IBAN <span class="optional">leave blank — bank lets user pick</span></label>
-          <input name="debtor_iban" type="text" placeholder="LT00 0000 0000 0000 0000">
+          <select id="debtor-select" style="display:none" onchange="onDebtorSelect()">
+            <option value="">— Bank lets user pick —</option>
+          </select>
+          <input name="debtor_iban" id="debtor-manual" type="text" placeholder="LT00 0000 0000 0000 0000">
         </div>
       </div>
     </div>
@@ -276,6 +286,61 @@ function showResult(authUrl, paymentId) {
   document.getElementById('pid-box').textContent = paymentId || '—';
 }
 
+function loadAccounts() {
+  const sid = document.getElementById('session-id-input').value.trim();
+  if (!sid) return;
+  const btn = document.getElementById('load-accounts-btn');
+  btn.textContent = '…'; btn.disabled = true;
+  callTool('list_accounts', { session_id: sid }, function(result, err) {
+    btn.textContent = 'Load ↓'; btn.disabled = false;
+    if (err || result?.isError) return;
+    try {
+      const text = result?.content?.[0]?.text || '';
+      const data = result?.structuredContent || JSON.parse(text);
+      const accounts = data?.accounts || [];
+      if (!accounts.length) return;
+      // Fetch details for each account to get IBAN
+      const sel = document.getElementById('debtor-select');
+      sel.innerHTML = '<option value="">— Bank lets user pick —</option><option value="__manual__">Manual entry…</option>';
+      let fetched = 0;
+      accounts.forEach(function(uid) {
+        const uidStr = typeof uid === 'string' ? uid : uid.uid;
+        callTool('get_account_details', { account_id: uidStr, session_id: sid }, function(r2, e2) {
+          fetched++;
+          if (!e2 && !r2?.isError) {
+            try {
+              const t2 = r2?.content?.[0]?.text || '';
+              const d2 = r2?.structuredContent || JSON.parse(t2);
+              const iban = d2?.iban || d2?.identification;
+              if (iban) {
+                const label = (d2?.name ? d2.name + ' · ' : '') + iban;
+                const opt = document.createElement('option');
+                opt.value = iban; opt.textContent = label;
+                sel.insertBefore(opt, sel.querySelector('[value="__manual__"]'));
+              }
+            } catch(_) {}
+          }
+          if (fetched === accounts.length) {
+            sel.style.display = '';
+            document.getElementById('debtor-manual').style.display = 'none';
+            document.getElementById('debtor-manual').name = '';
+          }
+        });
+      });
+    } catch(_) {}
+  });
+}
+
+function onDebtorSelect() {
+  const sel = document.getElementById('debtor-select');
+  const manual = document.getElementById('debtor-manual');
+  if (sel.value === '__manual__') {
+    manual.style.display = ''; manual.name = 'debtor_iban';
+  } else {
+    manual.style.display = 'none'; manual.name = '';
+  }
+}
+
 function validateIBAN(v) {
   const s = v.replace(/\s/g, '').toUpperCase();
   return /^[A-Z]{2}\d{2}[A-Z0-9]{1,30}$/.test(s);
@@ -306,7 +371,10 @@ document.getElementById('form').addEventListener('submit', function(e) {
   if (!g('creditor_name')) { errors.push('Recipient name is required'); showFieldError('creditor_name', 'Required'); }
   if (!g('creditor_iban')) { errors.push('Recipient IBAN is required'); showFieldError('creditor_iban', 'Required'); }
   else if (!validateIBAN(g('creditor_iban'))) { errors.push('Recipient IBAN format is invalid'); showFieldError('creditor_iban', 'Invalid IBAN format'); }
-  if (g('debtor_iban') && !validateIBAN(g('debtor_iban'))) { errors.push('Your IBAN format is invalid'); showFieldError('debtor_iban', 'Invalid IBAN format'); }
+  const debtorSelEl = document.getElementById('debtor-select');
+  const debtorManual = g('debtor_iban');
+  const usingManualDebtor = debtorSelEl.style.display === 'none' || debtorSelEl.value === '__manual__';
+  if (usingManualDebtor && debtorManual && !validateIBAN(debtorManual)) { errors.push('Your IBAN format is invalid'); showFieldError('debtor_iban', 'Invalid IBAN format'); }
   if (!g('redirect_url') || !g('redirect_url').startsWith('http')) { errors.push('Redirect URL must be a valid URL'); showFieldError('redirect_url', 'Valid URL required'); }
 
   if (errors.length) {
@@ -330,8 +398,13 @@ document.getElementById('form').addEventListener('submit', function(e) {
     payment_type:  g('payment_type'),
     psu_type:      g('psu_type'),
   };
+  // Debtor IBAN — from dropdown if loaded, else from manual input
+  const selEl = document.getElementById('debtor-select');
+  const debtorIban = (selEl.style.display !== 'none' && selEl.value && selEl.value !== '__manual__')
+    ? selEl.value
+    : g('debtor_iban').replace(/\s/g, '');
   if (g('remittance'))     args.remittance     = g('remittance');
-  if (g('debtor_iban'))    args.debtor_iban    = g('debtor_iban').replace(/\s/g, '');
+  if (debtorIban)          args.debtor_iban    = debtorIban;
   if (g('execution_date')) args.execution_date = g('execution_date');
 
   callTool('create_payment', args, (result, err) => {
