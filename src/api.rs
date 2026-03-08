@@ -103,15 +103,14 @@ pub struct PaymentRequest {
 #[derive(Serialize)]
 pub struct PaymentRequestBody {
     pub credit_transfer_transaction: Vec<CreditTransfer>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub debtor_account: Option<AccountIdentification>,
 }
 
 #[derive(Serialize)]
 pub struct CreditTransfer {
     pub instructed_amount:      Amount,
-    pub creditor:               Creditor,
-    pub creditor_account:       IbanAccount,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub debtor_account:         Option<IbanAccount>,
+    pub beneficiary:            Beneficiary,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub remittance_information: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -122,10 +121,28 @@ pub struct CreditTransfer {
 pub struct Amount { pub amount: String, pub currency: String }
 
 #[derive(Serialize)]
+pub struct Beneficiary {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub creditor:         Option<Creditor>,
+    pub creditor_account: AccountIdentification,
+}
+
+#[derive(Serialize)]
 pub struct Creditor { pub name: String }
 
 #[derive(Serialize)]
-pub struct IbanAccount { pub iban: String }
+pub struct AccountIdentification {
+    pub identification: String,
+    pub scheme_name:    String,
+}
+
+/// Format an amount string to always have 2 decimal places (e.g. "12" → "12.00")
+fn fmt_amount(amount: &str) -> String {
+    match amount.parse::<f64>() {
+        Ok(v) => format!("{:.2}", v),
+        Err(_) => amount.to_string(),
+    }
+}
 
 impl PaymentRequest {
     #[allow(clippy::too_many_arguments)]
@@ -148,14 +165,24 @@ impl PaymentRequest {
             webhook_url:  webhook_url.map(str::to_string),
             language:     language.map(str::to_string),
             payment_request: PaymentRequestBody {
+                debtor_account: debtor_iban.map(|iban| AccountIdentification {
+                    identification: iban.to_string(),
+                    scheme_name:    "IBAN".to_string(),
+                }),
                 credit_transfer_transaction: vec![CreditTransfer {
                     instructed_amount: Amount {
-                        amount:   amount.to_string(),
+                        amount:   fmt_amount(amount),
                         currency: currency.to_string(),
                     },
-                    creditor:         Creditor { name: creditor_name.to_string() },
-                    creditor_account: IbanAccount { iban: creditor_iban.to_string() },
-                    debtor_account:   debtor_iban.map(|iban| IbanAccount { iban: iban.to_string() }),
+                    beneficiary: Beneficiary {
+                        creditor: if creditor_name.is_empty() { None } else {
+                            Some(Creditor { name: creditor_name.to_string() })
+                        },
+                        creditor_account: AccountIdentification {
+                            identification: creditor_iban.to_string(),
+                            scheme_name:    "IBAN".to_string(),
+                        },
+                    },
                     remittance_information: if remittance.is_empty() { vec![] } else { vec![remittance.to_string()] },
                     requested_execution_date: execution_date.map(str::to_string),
                 }],
