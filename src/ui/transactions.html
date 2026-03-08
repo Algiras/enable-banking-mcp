@@ -256,6 +256,30 @@
             transition: border-color .15s, color .15s;
         }
         .export-btn:hover { border-color: var(--blue); color: var(--blue); }
+        .csv-modal {
+            position: fixed; inset: 0; background: rgba(0,0,0,.6);
+            display: flex; align-items: center; justify-content: center; z-index: 100;
+        }
+        .csv-modal-box {
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 10px; padding: 16px; width: min(560px, 95vw);
+            display: flex; flex-direction: column; gap: 10px;
+        }
+        .csv-modal-header { display: flex; justify-content: space-between; align-items: center; }
+        .csv-modal-title { font-size: 13px; font-weight: 600; }
+        .csv-close { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 18px; line-height: 1; padding: 0 4px; }
+        .csv-textarea {
+            width: 100%; height: 220px; resize: vertical;
+            background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+            color: var(--text); font-family: ui-monospace, monospace; font-size: 10.5px;
+            padding: 8px; outline: none;
+        }
+        .csv-copy-btn {
+            align-self: flex-end; background: var(--blue); border: none; border-radius: 7px;
+            color: #fff; cursor: pointer; font-size: 12px; font-weight: 600;
+            padding: 7px 16px; transition: opacity .15s;
+        }
+        .csv-copy-btn:hover { opacity: .85; }
         .refetch-bar {
             display: none; gap: 8px; flex-wrap: wrap; align-items: center;
             margin-bottom: 10px; padding: 10px 12px;
@@ -492,7 +516,7 @@
         }
 
         function exportCSV() {
-            const headers = ['Date', 'Description', 'Amount', 'Currency', 'Status'];
+            const headers = ['Date', 'Description', 'Amount', 'Currency', 'Status', 'Type'];
             const escCSV = v => `"${String(v ?? '').replace(/"/g, '""')}"`;
             const csvRows = [headers.join(',')];
             for (const t of lastSorted) {
@@ -500,12 +524,25 @@
                 const cur = t.transaction_amount?.currency ?? t.currency ?? 'EUR';
                 const merchant = t.remittance_information?.[0] ?? t.creditor?.name ?? t.debtor?.name ?? '';
                 const date = (t.booking_date ?? t.value_date ?? '').substring(0, 10);
-                csvRows.push([date, escCSV(merchant), amt, cur, t.status ?? 'BOOK'].join(','));
+                const type = t.credit_debit_indicator ?? (amt >= 0 ? 'CRDT' : 'DBIT');
+                csvRows.push([date, escCSV(merchant), Math.abs(amt), cur, t.status ?? 'BOOK', type].join(','));
             }
-            const blob = new Blob([csvRows.join('\n')], { type: 'text/csv' });
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a'); a.href = url; a.download = 'transactions.csv'; a.click();
-            URL.revokeObjectURL(url);
+            const csv = csvRows.join('\n');
+            document.getElementById('csv-content').value = csv;
+            document.getElementById('csv-modal').style.display = 'flex';
+        }
+        function closeCsvModal() {
+            document.getElementById('csv-modal').style.display = 'none';
+        }
+        function copyCsv() {
+            const ta = document.getElementById('csv-content');
+            ta.select();
+            try {
+                navigator.clipboard.writeText(ta.value).catch(() => document.execCommand('copy'));
+            } catch(_) { document.execCommand('copy'); }
+            const btn = document.querySelector('.csv-copy-btn');
+            const orig = btn.textContent; btn.textContent = 'Copied!';
+            setTimeout(() => btn.textContent = orig, 1500);
         }
 
         function reportSize() {
@@ -565,6 +602,17 @@
     } catch(_) {}
 
     </script>
+
+<div class="csv-modal" id="csv-modal" style="display:none" onclick="if(event.target===this)closeCsvModal()">
+  <div class="csv-modal-box">
+    <div class="csv-modal-header">
+      <span class="csv-modal-title">CSV Export — select all and copy</span>
+      <button class="csv-close" onclick="closeCsvModal()">✕</button>
+    </div>
+    <textarea class="csv-textarea" id="csv-content" readonly onclick="this.select()"></textarea>
+    <button class="csv-copy-btn" onclick="copyCsv()">Copy to Clipboard</button>
+  </div>
+</div>
 </body>
 
 </html>
