@@ -256,6 +256,26 @@
             transition: border-color .15s, color .15s;
         }
         .export-btn:hover { border-color: var(--blue); color: var(--blue); }
+        .refetch-bar {
+            display: none; gap: 8px; flex-wrap: wrap; align-items: center;
+            margin-bottom: 10px; padding: 10px 12px;
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 8px;
+        }
+        .refetch-bar label { font-size: 11px; color: var(--muted); font-weight: 600; }
+        input[type=date] {
+            background: var(--surface); border: 1px solid var(--border);
+            border-radius: 7px; color: var(--text);
+            padding: 6px 8px; font-size: 12px; outline: none;
+        }
+        input[type=date]:focus { border-color: var(--blue); }
+        .refetch-btn {
+            background: var(--blue); border: none; border-radius: 7px;
+            color: #fff; cursor: pointer; font-size: 12px; font-weight: 600;
+            padding: 6px 14px; transition: opacity .15s;
+        }
+        .refetch-btn:hover:not(:disabled) { opacity: .85; }
+        .refetch-btn:disabled { opacity: .5; cursor: default; }
     </style>
 </head>
 
@@ -266,6 +286,18 @@
         <button class="export-btn" id="export-btn" style="display:none" onclick="exportCSV()">↓ Export CSV</button>
     </div>
     <div class="pagination-banner" id="pgbanner"></div>
+    <div class="refetch-bar" id="refetch-bar">
+        <label>From</label>
+        <input type="date" id="rf-from">
+        <label>To</label>
+        <input type="date" id="rf-to">
+        <select id="rf-status" style="background:var(--surface);border:1px solid var(--border);border-radius:7px;color:var(--text);padding:6px 8px;font-size:12px;outline:none">
+            <option value="">All statuses</option>
+            <option value="BOOK">Booked</option>
+            <option value="PDNG">Pending</option>
+        </select>
+        <button class="refetch-btn" id="refetch-btn" onclick="refetch()">↻ Refetch</button>
+    </div>
     <div class="toolbar">
         <input type="search" id="search" placeholder="Search transactions…" oninput="currentPage=1;display()" />
         <select id="statusFilter" onchange="currentPage=1;display()">
@@ -303,6 +335,35 @@
         let sortKey = 'date', sortDir = -1;
         let currentPage = 1;
         let lastSorted = [];
+        let _uiParams = null;
+        let _callId = 10;
+        const _pending = {};
+        function callTool(name, args, cb) {
+            const id = _callId++;
+            _pending[id] = cb;
+            try { window.parent.postMessage({ jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: args } }, '*'); } catch(_) {}
+        }
+        function refetch() {
+            if (!_uiParams) return;
+            const btn = document.getElementById('refetch-btn');
+            btn.disabled = true; btn.textContent = 'Loading…';
+            const args = { account_id: _uiParams.account_id, session_id: _uiParams.session_id };
+            const from = document.getElementById('rf-from').value;
+            const to   = document.getElementById('rf-to').value;
+            const st   = document.getElementById('rf-status').value;
+            if (from) args.date_from = from;
+            if (to)   args.date_to   = to;
+            if (st)   args.transaction_status = st;
+            callTool('get_account_transactions', args, (result, err) => {
+                btn.disabled = false; btn.textContent = '↻ Refetch';
+                if (err || result?.isError) return;
+                try {
+                    const text = result?.content?.[0]?.text;
+                    const data = result?.structuredContent || (text ? JSON.parse(text) : null);
+                    if (data) window.renderData(data);
+                } catch(e) { console.error(e); }
+            });
+        }
 
         function fmt(amount, cur) {
             return new Intl.NumberFormat(undefined, { style: 'currency', currency: cur || 'EUR' }).format(amount);
@@ -312,6 +373,16 @@
             const txns = data.transactions ?? (Array.isArray(data) ? data : [data]);
             const pages = data.pages_fetched;
             rows = txns;
+
+            // Store params for refetch if available
+            if (data._ui_params) {
+                _uiParams = data._ui_params;
+                const bar = document.getElementById('refetch-bar');
+                bar.style.display = 'flex';
+                if (data._ui_params.date_from) document.getElementById('rf-from').value = data._ui_params.date_from;
+                if (data._ui_params.date_to)   document.getElementById('rf-to').value   = data._ui_params.date_to;
+                if (data._ui_params.transaction_status) document.getElementById('rf-status').value = data._ui_params.transaction_status;
+            }
 
             if (pages && pages > 1) {
                 const banner = document.getElementById('pgbanner');
@@ -459,6 +530,9 @@
                 if (hc?.theme === 'light') document.documentElement.setAttribute('data-theme', 'light');
                 try { window.parent.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/initialized', params: {} }, '*'); } catch(_) {}
                 return;
+            }
+            if (msg.jsonrpc === '2.0' && typeof msg.id === 'number' && msg.id >= 10 && _pending[msg.id]) {
+                const cb = _pending[msg.id]; delete _pending[msg.id]; cb(msg.result, msg.error); return;
             }
             // Tool result notification — contains transaction data
             if (msg.jsonrpc === '2.0' && msg.method === 'ui/notifications/tool-result') {

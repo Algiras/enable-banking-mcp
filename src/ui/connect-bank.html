@@ -1,0 +1,850 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Connect Bank</title>
+  <style>
+    :root {
+      --bg: #0d1117;
+      --surface: #161b22;
+      --border: #30363d;
+      --text: #e6edf3;
+      --muted: #8b949e;
+      --green: #3fb950;
+      --red: #f85149;
+      --blue: #58a6ff;
+      --gold: #d29922;
+    }
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg: #ffffff;
+        --surface: #f6f8fa;
+        --border: #d0d7de;
+        --text: #1f2328;
+        --muted: #636c76;
+        --green: #1a7f37;
+        --red: #cf222e;
+        --blue: #0969da;
+        --gold: #9a6700;
+      }
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      padding: 16px;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+
+    h2 {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: .08em;
+    }
+
+    .step-indicator {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .step-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--border);
+      transition: background .2s;
+    }
+
+    .step-dot.active {
+      background: var(--blue);
+    }
+
+    .step-dot.done {
+      background: var(--green);
+    }
+
+    .step {
+      display: none;
+    }
+
+    .step.visible {
+      display: block;
+    }
+
+    .field {
+      margin-bottom: 14px;
+    }
+
+    label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--muted);
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+    }
+
+    input[type=text],
+    select {
+      width: 100%;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      padding: 9px 12px;
+      font-size: 13px;
+      outline: none;
+      transition: border-color .15s;
+      font-family: inherit;
+    }
+
+    input[type=text]::placeholder {
+      color: var(--muted);
+    }
+
+    input[type=text]:focus,
+    select:focus {
+      border-color: var(--blue);
+    }
+
+    select option {
+      background: var(--surface);
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--blue);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 10px 18px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity .15s, transform .1s;
+      font-family: inherit;
+    }
+
+    .btn:hover:not(:disabled) {
+      opacity: .88;
+      transform: translateY(-1px);
+    }
+
+    .btn:disabled {
+      opacity: .4;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .btn-outline {
+      background: transparent;
+      color: var(--muted);
+      border: 1px solid var(--border);
+    }
+
+    .btn-outline:hover:not(:disabled) {
+      border-color: var(--blue);
+      color: var(--blue);
+      opacity: 1;
+    }
+
+    .btn-green {
+      background: var(--green);
+      color: #fff;
+      font-size: 14px;
+      padding: 12px 22px;
+      border-radius: 9px;
+      width: 100%;
+      justify-content: center;
+      text-decoration: none;
+      display: flex;
+    }
+
+    .btn-green:hover {
+      opacity: .88;
+      transform: translateY(-1px);
+    }
+
+    .search-row {
+      display: flex;
+      gap: 8px;
+      align-items: flex-end;
+    }
+
+    .search-row .field {
+      flex: 1;
+      margin-bottom: 0;
+    }
+
+    .bank-list {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 8px;
+      margin: 14px 0;
+      max-height: 280px;
+      overflow-y: auto;
+      padding-right: 2px;
+    }
+
+    .bank-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 14px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+      transition: border-color .15s, background .15s;
+      user-select: none;
+    }
+
+    .bank-card:hover {
+      border-color: var(--blue);
+    }
+
+    .bank-card.selected {
+      border-color: var(--blue);
+      background: rgba(88, 166, 255, .1);
+      color: var(--blue);
+    }
+
+    .bank-list-empty {
+      color: var(--muted);
+      font-size: 13px;
+      padding: 20px 0;
+      text-align: center;
+    }
+
+    .connect-row {
+      display: flex;
+      gap: 8px;
+      align-items: flex-end;
+      margin-top: 4px;
+    }
+
+    .connect-row .field {
+      flex: 1;
+      margin-bottom: 0;
+    }
+
+    .divider {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 18px 0;
+    }
+
+    /* Step 2 */
+    .auth-url-box {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 12px;
+      font-size: 12px;
+      font-family: monospace;
+      color: var(--muted);
+      word-break: break-all;
+      margin: 12px 0;
+      cursor: text;
+      user-select: all;
+    }
+
+    .spinner-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--muted);
+      font-size: 13px;
+      margin: 16px 0;
+    }
+
+    .spinner {
+      width: 18px;
+      height: 18px;
+      border: 2px solid var(--border);
+      border-top-color: var(--blue);
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+      flex-shrink: 0;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .elapsed {
+      font-size: 12px;
+      color: var(--muted);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .timeout-msg {
+      background: rgba(248, 81, 73, .1);
+      border: 1px solid rgba(248, 81, 73, .3);
+      border-radius: 8px;
+      padding: 12px 14px;
+      font-size: 13px;
+      color: var(--red);
+      display: none;
+      margin-top: 12px;
+    }
+
+    .step2-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 16px;
+    }
+
+    /* Step 3 */
+    .success-card {
+      background: rgba(63, 185, 80, .08);
+      border: 1px solid rgba(63, 185, 80, .3);
+      border-radius: 10px;
+      padding: 20px;
+      margin-bottom: 16px;
+    }
+
+    .success-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--green);
+      margin-bottom: 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .success-row {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      margin-bottom: 12px;
+    }
+
+    .success-row:last-child {
+      margin-bottom: 0;
+    }
+
+    .success-label {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: .05em;
+    }
+
+    .success-value {
+      font-size: 13px;
+      font-family: monospace;
+      color: var(--text);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 7px 10px;
+      cursor: text;
+      user-select: all;
+    }
+
+    .success-value.mono-lg {
+      font-size: 12px;
+      letter-spacing: .02em;
+    }
+
+    .creating-state {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--muted);
+      font-size: 13px;
+      padding: 24px 0;
+    }
+
+    .error-msg {
+      background: rgba(248, 81, 73, .1);
+      border: 1px solid rgba(248, 81, 73, .3);
+      border-radius: 8px;
+      padding: 12px 14px;
+      font-size: 13px;
+      color: var(--red);
+      margin-bottom: 14px;
+      display: none;
+    }
+
+    .bank-count {
+      font-size: 11px;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="header">
+    <h2>Connect Bank</h2>
+    <div class="step-indicator">
+      <div class="step-dot active" id="dot1" title="Step 1: Select Bank"></div>
+      <div class="step-dot" id="dot2" title="Step 2: Authorize"></div>
+      <div class="step-dot" id="dot3" title="Step 3: Done"></div>
+    </div>
+  </div>
+
+  <!-- Step 1: Bank Selection -->
+  <div class="step visible" id="step1">
+    <div class="search-row">
+      <div class="field">
+        <label>Country</label>
+        <input type="text" id="country" maxlength="2" placeholder="e.g. FI" oninput="this.value=this.value.toUpperCase()" />
+      </div>
+      <div class="field">
+        <label>PSU Type</label>
+        <select id="psu-type">
+          <option value="personal">Personal</option>
+          <option value="business">Business</option>
+        </select>
+      </div>
+      <button class="btn" id="search-btn" onclick="searchBanks()">Search</button>
+    </div>
+
+    <div id="bank-list-wrap" style="display:none">
+      <div class="bank-count" id="bank-count"></div>
+      <div class="bank-list" id="bank-list"></div>
+    </div>
+
+    <div class="error-msg" id="search-error"></div>
+
+    <hr class="divider" id="connect-divider" style="display:none" />
+
+    <div id="connect-fields" style="display:none">
+      <div class="field">
+        <label>Session Label</label>
+        <input type="text" id="session-label" placeholder="e.g. Nordea FI personal" />
+      </div>
+      <div class="field">
+        <label>Redirect URL</label>
+        <input type="text" id="redirect-url" value="https://algiras.github.io/enable-banking-mcp/callback" />
+      </div>
+      <div style="display:flex;justify-content:flex-end;margin-top:4px">
+        <button class="btn" id="connect-btn" disabled onclick="startConnect()">Connect →</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Step 2: Authorization Pending -->
+  <div class="step" id="step2">
+    <p style="font-size:13px;color:var(--muted);margin-bottom:14px">Open the link below to log in to your bank, then wait for this page to detect the authorisation.</p>
+    <a id="auth-link" href="#" target="_blank" class="btn-green" rel="noopener noreferrer">Open bank login ↗</a>
+    <div class="auth-url-box" id="auth-url-display" title="Click to select all"></div>
+
+    <div class="spinner-row">
+      <div class="spinner" id="poll-spinner"></div>
+      <span>Waiting for authorisation… (polling every 2s)</span>
+      <span class="elapsed" id="elapsed-time">0s</span>
+    </div>
+
+    <div class="timeout-msg" id="timeout-msg">
+      Timed out after 120 seconds. Please try again.
+    </div>
+
+    <div class="step2-actions">
+      <button class="btn btn-outline" onclick="cancelAuth()">Cancel</button>
+    </div>
+  </div>
+
+  <!-- Step 3: Session Created -->
+  <div class="step" id="step3">
+    <div id="creating-state" class="creating-state">
+      <div class="spinner"></div>
+      <span>Creating session…</span>
+    </div>
+    <div id="session-error" class="error-msg"></div>
+    <div id="session-result" style="display:none">
+      <div class="success-card">
+        <div class="success-title">&#10003; Session Connected</div>
+        <div class="success-row">
+          <span class="success-label">Session ID</span>
+          <span class="success-value mono-lg" id="result-session-id"></span>
+        </div>
+        <div class="success-row">
+          <span class="success-label">Bank</span>
+          <span class="success-value" id="result-bank"></span>
+        </div>
+        <div class="success-row">
+          <span class="success-label">Label</span>
+          <span class="success-value" id="result-label"></span>
+        </div>
+      </div>
+      <button class="btn btn-outline" onclick="resetToStep1()">+ Connect Another Bank</button>
+    </div>
+  </div>
+
+  <script>
+    // ── MCP callTool infrastructure ──────────────────────────────────────────
+    let _callId = 10;
+    const _pending = {};
+
+    function callTool(name, args, cb) {
+      const id = _callId++;
+      _pending[id] = cb;
+      try {
+        window.parent.postMessage({
+          jsonrpc: '2.0', id,
+          method: 'tools/call',
+          params: { name, arguments: args }
+        }, '*');
+      } catch (_) {
+        delete _pending[id];
+        cb(null, new Error('postMessage failed'));
+      }
+    }
+
+    // ── Size reporting ───────────────────────────────────────────────────────
+    function reportSize() {
+      try {
+        window.parent.postMessage({
+          jsonrpc: '2.0', method: 'ui/notifications/size-changed',
+          params: { height: document.body.scrollHeight, width: document.body.scrollWidth }
+        }, '*');
+      } catch (_) {}
+    }
+    new ResizeObserver(reportSize).observe(document.body);
+
+    // ── UUID helper ──────────────────────────────────────────────────────────
+    function uuid() {
+      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+        const r = Math.random() * 16 | 0; return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+      });
+    }
+
+    // ── State ────────────────────────────────────────────────────────────────
+    let selectedBank = null;
+    let authUrl = null;
+    let capturedCode = null;
+    let pollInterval = null;
+    let elapsedInterval = null;
+    let elapsedSeconds = 0;
+
+    // ── Step navigation ──────────────────────────────────────────────────────
+    function showStep(n) {
+      [1, 2, 3].forEach(i => {
+        document.getElementById('step' + i).classList.toggle('visible', i === n);
+        const dot = document.getElementById('dot' + i);
+        dot.classList.remove('active', 'done');
+        if (i < n) dot.classList.add('done');
+        else if (i === n) dot.classList.add('active');
+      });
+    }
+
+    // ── Step 1: Bank search ──────────────────────────────────────────────────
+    function searchBanks() {
+      const country = document.getElementById('country').value.trim().toUpperCase();
+      const psuType = document.getElementById('psu-type').value;
+      const errEl = document.getElementById('search-error');
+      errEl.style.display = 'none';
+
+      if (!country || country.length !== 2) {
+        errEl.textContent = 'Please enter a valid 2-letter country code.';
+        errEl.style.display = 'block';
+        return;
+      }
+
+      const btn = document.getElementById('search-btn');
+      btn.disabled = true;
+      btn.textContent = '…';
+
+      const listWrap = document.getElementById('bank-list-wrap');
+      listWrap.style.display = 'none';
+      document.getElementById('connect-divider').style.display = 'none';
+      document.getElementById('connect-fields').style.display = 'none';
+      selectedBank = null;
+      document.getElementById('connect-btn').disabled = true;
+
+      callTool('get_available_banks', { country, psu_type: psuType }, function(result, err) {
+        btn.disabled = false;
+        btn.textContent = 'Search';
+
+        if (err || !result) {
+          errEl.textContent = 'Error fetching banks: ' + (err?.message || 'unknown error');
+          errEl.style.display = 'block';
+          return;
+        }
+
+        let banks = [];
+        try {
+          const text = result.content?.[0]?.text;
+          const parsed = text ? JSON.parse(text) : result;
+          banks = Array.isArray(parsed) ? parsed : (parsed.banks ?? parsed.data ?? []);
+        } catch (e) {
+          errEl.textContent = 'Could not parse bank list.';
+          errEl.style.display = 'block';
+          return;
+        }
+
+        if (!banks.length) {
+          errEl.textContent = 'No banks found for ' + country + '.';
+          errEl.style.display = 'block';
+          return;
+        }
+
+        renderBankList(banks);
+        listWrap.style.display = 'block';
+        document.getElementById('connect-divider').style.display = 'block';
+        document.getElementById('connect-fields').style.display = 'block';
+      });
+    }
+
+    function renderBankList(banks) {
+      const list = document.getElementById('bank-list');
+      const count = document.getElementById('bank-count');
+      count.textContent = banks.length + ' bank' + (banks.length !== 1 ? 's' : '') + ' available';
+
+      list.innerHTML = banks.map(b => {
+        const name = typeof b === 'string' ? b : (b.name ?? b.bank_name ?? JSON.stringify(b));
+        const escaped = name.replace(/"/g, '&quot;').replace(/</g, '&lt;');
+        return `<div class="bank-card" data-name="${escaped}" onclick="selectBank(this, '${escaped}')">${escaped}</div>`;
+      }).join('');
+    }
+
+    function selectBank(el, name) {
+      document.querySelectorAll('.bank-card').forEach(c => c.classList.remove('selected'));
+      el.classList.add('selected');
+      selectedBank = name;
+      document.getElementById('connect-btn').disabled = false;
+    }
+
+    function startConnect() {
+      const country = document.getElementById('country').value.trim().toUpperCase();
+      const psuType = document.getElementById('psu-type').value;
+      const redirectUrl = document.getElementById('redirect-url').value.trim();
+      const errEl = document.getElementById('search-error');
+      errEl.style.display = 'none';
+
+      if (!selectedBank) return;
+      if (!redirectUrl) {
+        errEl.textContent = 'Please enter a redirect URL.';
+        errEl.style.display = 'block';
+        return;
+      }
+
+      const state = uuid();
+      const btn = document.getElementById('connect-btn');
+      btn.disabled = true;
+      btn.textContent = '…';
+
+      callTool('start_authorization', {
+        bank_name: selectedBank,
+        country,
+        state,
+        redirect_url: redirectUrl,
+        psu_type: psuType
+      }, function(result, err) {
+        btn.disabled = false;
+        btn.textContent = 'Connect →';
+
+        if (err || !result) {
+          errEl.textContent = 'Authorization failed: ' + (err?.message || 'unknown error');
+          errEl.style.display = 'block';
+          return;
+        }
+
+        let url = null;
+        try {
+          const text = result.content?.[0]?.text;
+          const parsed = text ? JSON.parse(text) : result;
+          url = parsed.url ?? parsed.auth_url ?? parsed.authorization_url ?? text;
+        } catch (e) {
+          const text = result.content?.[0]?.text ?? '';
+          if (text.startsWith('http')) url = text;
+        }
+
+        if (!url || !url.startsWith('http')) {
+          errEl.textContent = 'Did not receive a valid authorization URL.';
+          errEl.style.display = 'block';
+          return;
+        }
+
+        authUrl = url;
+        enterStep2();
+      });
+    }
+
+    // ── Step 2: Authorization polling ────────────────────────────────────────
+    function enterStep2() {
+      showStep(2);
+
+      document.getElementById('auth-link').href = authUrl;
+      document.getElementById('auth-url-display').textContent = authUrl;
+      document.getElementById('timeout-msg').style.display = 'none';
+
+      elapsedSeconds = 0;
+      document.getElementById('elapsed-time').textContent = '0s';
+      document.getElementById('poll-spinner').style.display = '';
+
+      elapsedInterval = setInterval(function() {
+        elapsedSeconds++;
+        document.getElementById('elapsed-time').textContent = elapsedSeconds + 's';
+        if (elapsedSeconds >= 120) {
+          stopPolling();
+          document.getElementById('poll-spinner').style.display = 'none';
+          document.getElementById('timeout-msg').style.display = 'block';
+        }
+      }, 1000);
+
+      pollInterval = setInterval(doPoll, 2000);
+    }
+
+    function doPoll() {
+      callTool('get_captured_code', {}, function(result, err) {
+        if (err || !result) return;
+        let code = null;
+        try {
+          const text = result.content?.[0]?.text ?? '';
+          if (text && !text.toLowerCase().includes('error') && !text.toLowerCase().includes('waiting') && !text.toLowerCase().includes('no code') && text.trim().length > 4) {
+            try {
+              const parsed = JSON.parse(text);
+              code = parsed.code ?? (typeof parsed === 'string' ? parsed : null);
+            } catch (_) {
+              code = text.trim();
+            }
+          }
+        } catch (e) {}
+
+        if (code) {
+          stopPolling();
+          capturedCode = code;
+          enterStep3();
+        }
+      });
+    }
+
+    function stopPolling() {
+      if (pollInterval) { clearInterval(pollInterval); pollInterval = null; }
+      if (elapsedInterval) { clearInterval(elapsedInterval); elapsedInterval = null; }
+    }
+
+    function cancelAuth() {
+      stopPolling();
+      authUrl = null;
+      capturedCode = null;
+      resetToStep1();
+    }
+
+    // ── Step 3: Session creation ─────────────────────────────────────────────
+    function enterStep3() {
+      showStep(3);
+
+      const label = document.getElementById('session-label').value.trim() || selectedBank;
+      document.getElementById('creating-state').style.display = 'flex';
+      document.getElementById('session-result').style.display = 'none';
+      document.getElementById('session-error').style.display = 'none';
+
+      callTool('create_session', { code: capturedCode, label }, function(result, err) {
+        document.getElementById('creating-state').style.display = 'none';
+
+        if (err || !result) {
+          const errEl = document.getElementById('session-error');
+          errEl.textContent = 'Failed to create session: ' + (err?.message || 'unknown error');
+          errEl.style.display = 'block';
+          return;
+        }
+
+        let sessionId = null;
+        try {
+          const text = result.content?.[0]?.text;
+          const parsed = text ? JSON.parse(text) : result;
+          sessionId = parsed.session_id ?? parsed.id ?? parsed.sessionId ?? null;
+        } catch (e) {}
+
+        if (!sessionId) {
+          const errEl = document.getElementById('session-error');
+          errEl.textContent = 'Session created but could not extract session ID from response.';
+          errEl.style.display = 'block';
+          return;
+        }
+
+        document.getElementById('result-session-id').textContent = sessionId;
+        document.getElementById('result-bank').textContent = selectedBank ?? '—';
+        document.getElementById('result-label').textContent = label;
+        document.getElementById('session-result').style.display = 'block';
+      });
+    }
+
+    // ── Reset ────────────────────────────────────────────────────────────────
+    function resetToStep1() {
+      selectedBank = null;
+      authUrl = null;
+      capturedCode = null;
+      stopPolling();
+
+      document.getElementById('country').value = '';
+      document.getElementById('psu-type').value = 'personal';
+      document.getElementById('session-label').value = '';
+      document.getElementById('bank-list-wrap').style.display = 'none';
+      document.getElementById('connect-divider').style.display = 'none';
+      document.getElementById('connect-fields').style.display = 'none';
+      document.getElementById('connect-btn').disabled = true;
+      document.getElementById('search-error').style.display = 'none';
+
+      showStep(1);
+    }
+
+    // ── Message listener ─────────────────────────────────────────────────────
+    window.addEventListener('message', function(event) {
+      const msg = event.data;
+      if (!msg || typeof msg !== 'object') return;
+
+      // ui/initialize response
+      if (msg.jsonrpc === '2.0' && msg.id === 1 && 'result' in msg) {
+        const hc = msg.result?.hostContext;
+        if (hc?.theme === 'light') document.documentElement.setAttribute('data-theme', 'light');
+        try { window.parent.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/initialized', params: {} }, '*'); } catch (_) {}
+        return;
+      }
+
+      // tools/call responses
+      if (msg.jsonrpc === '2.0' && msg.id >= 10 && _pending[msg.id]) {
+        const cb = _pending[msg.id];
+        delete _pending[msg.id];
+        if ('error' in msg) {
+          cb(null, new Error(msg.error?.message || 'RPC error'));
+        } else {
+          cb(msg.result, null);
+        }
+        return;
+      }
+    });
+
+    // ── Initialize ───────────────────────────────────────────────────────────
+    try {
+      window.parent.postMessage({
+        jsonrpc: '2.0', id: 1, method: 'ui/initialize',
+        params: {
+          protocolVersion: '2026-01-26',
+          appCapabilities: { availableDisplayModes: ['inline'] },
+          appInfo: { name: 'connect-bank', version: '1.0.0' }
+        }
+      }, '*');
+    } catch (_) {}
+  </script>
+</body>
+
+</html>

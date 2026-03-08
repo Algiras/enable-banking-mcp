@@ -43,6 +43,7 @@ static HTML_SESSIONS:        &str = include_str!("ui/sessions.html");
 static HTML_ACCOUNTS:        &str = include_str!("ui/accounts.html");
 static HTML_PAYMENT:         &str = include_str!("ui/payment.html");
 static HTML_CREATE_PAYMENT:  &str = include_str!("ui/create-payment.html");
+static HTML_CONNECT_BANK:    &str = include_str!("ui/connect-bank.html");
 
 // ─── Captured OAuth code ──────────────────────────────────────────────────────
 
@@ -317,6 +318,10 @@ fn build_tools() -> Vec<Tool> {
         make_tool("payment_form",
             "Open an interactive payment creation form. The user fills in bank, recipient, and amount details, then submits to initiate the payment — no need to gather params conversationally. Renders an interactive form inline in the chat (claude.ai web, Claude Desktop, Cursor). Do NOT create an artifact — the UI renders automatically.",
             &[], &[], Some(tool_meta("ui://create-payment"))),
+
+        make_tool("connect_bank_ui",
+            "Open an interactive bank connection wizard. Lets the user search banks by country, pick one, set a session label, then handles the full OAuth flow (authorization URL → auto-polls for the code → creates the session) — no need to gather parameters conversationally. Renders an interactive form inline in the chat (claude.ai web, Claude Desktop, Cursor). Do NOT create an artifact — the UI renders automatically.",
+            &[], &[], Some(tool_meta("ui://connect-bank"))),
     ]
 }
 
@@ -631,7 +636,16 @@ impl EnableBankingServer {
                 };
                 let url = query.build_url(&self.base, &id, &sid);
                 match self.client.get_transactions_paginated(&token, &url).await {
-                    Ok(d)  => self.ok_ui(d, "transactions"),
+                    Ok(mut d) => {
+                        d["_ui_params"] = json!({
+                            "account_id": id,
+                            "session_id": sid,
+                            "date_from":  query.date_from,
+                            "date_to":    query.date_to,
+                            "transaction_status": query.transaction_status,
+                        });
+                        self.ok_ui(d, "transactions")
+                    }
                     Err(e) => err_result(e.to_string()),
                 }
             }
@@ -660,7 +674,16 @@ impl EnableBankingServer {
                     Ok(d) => {
                         let pages = d["pages_fetched"].as_u64().unwrap_or(1);
                         let cats  = tools::aggregate_spending(&d);
-                        self.ok_ui(json!({ "categories": cats, "pages_fetched": pages }), "spending")
+                        self.ok_ui(json!({
+                            "categories":   cats,
+                            "pages_fetched": pages,
+                            "_ui_params": {
+                                "account_id": id,
+                                "session_id": sid,
+                                "date_from":  query.date_from,
+                                "date_to":    query.date_to,
+                            }
+                        }), "spending")
                     }
                     Err(e) => err_result(e.to_string()),
                 }
@@ -715,7 +738,8 @@ impl EnableBankingServer {
                 api_get!(self.client, token, url)
             }
 
-            "payment_form" => self.ok_ui(json!({}), "create-payment"),
+            "payment_form"     => self.ok_ui(json!({}), "create-payment"),
+            "connect_bank_ui"  => self.ok_ui(json!({}), "connect-bank"),
 
             _ => err_result(format!("Unknown tool: {name}")),
         }
@@ -794,6 +818,7 @@ impl ServerHandler for EnableBankingServer {
             make_res("ui://accounts",       "Account List",           "Account UIDs for a session with status"),
             make_res("ui://payment",        "Payment Status",         "Payment details with status timeline"),
             make_res("ui://create-payment", "Payment Creation Form",  "Interactive form to initiate a new bank payment"),
+            make_res("ui://connect-bank",   "Bank Connection Wizard", "Step-by-step OAuth bank connection with bank picker and auto-polling"),
         ];
         Ok(result)
     }
@@ -818,6 +843,8 @@ impl ServerHandler for EnableBankingServer {
             (HTML_PAYMENT,         "text/html;profile=mcp-app")
         } else if uri_str.starts_with("ui://create-payment") {
             (HTML_CREATE_PAYMENT,  "text/html;profile=mcp-app")
+        } else if uri_str.starts_with("ui://connect-bank") {
+            (HTML_CONNECT_BANK,    "text/html;profile=mcp-app")
         } else {
             return Err(McpError::invalid_params(
                 format!("Unknown resource: {uri_str}"), None,
