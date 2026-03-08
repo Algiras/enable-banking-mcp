@@ -237,14 +237,14 @@
   <div class="result-hero">
     <div class="result-icon">🔐</div>
     <div class="result-title">Payment Initiated</div>
-    <div class="result-sub">Open the link below to authorise at your bank</div>
+    <div class="result-sub">Copy the URL below and open it in your browser to authorise</div>
   </div>
   <div class="auth-link-box">
     <div class="auth-link-label">Bank Authorisation URL</div>
-    <a id="auth-link" href="#" class="auth-link" target="_blank"></a>
+    <div id="auth-url-text" class="auth-link" style="word-break:break-all;user-select:all;cursor:text"></div>
+    <button class="open-btn" onclick="copyAuthUrl()" id="copy-url-btn" style="margin-top:8px">Copy URL</button>
   </div>
-  <a id="open-btn" href="#" class="open-btn" target="_blank">Open Bank Authorisation ↗</a>
-  <div class="pid-label">Payment ID</div>
+  <div class="pid-label" style="margin-top:12px">Payment ID</div>
   <div class="pid-box" id="pid-box" title="Click to select"></div>
   <button class="back-btn" onclick="showForm()">← New Payment</button>
 </div>
@@ -274,16 +274,25 @@ function showForm() {
   document.getElementById('form-panel').style.display = '';
   document.getElementById('result-panel').style.display = 'none';
 }
+let _currentAuthUrl = null;
 function showResult(authUrl, paymentId) {
   document.getElementById('form-panel').style.display = 'none';
-  const r = document.getElementById('result-panel');
-  r.style.display = 'block';
-  if (authUrl) {
-    document.getElementById('auth-link').href = authUrl;
-    document.getElementById('auth-link').textContent = authUrl;
-    document.getElementById('open-btn').href = authUrl;
-  }
+  document.getElementById('result-panel').style.display = 'block';
+  _currentAuthUrl = authUrl || null;
+  document.getElementById('auth-url-text').textContent = authUrl || '—';
   document.getElementById('pid-box').textContent = paymentId || '—';
+  // Best-effort open (works if sandbox allows popups)
+  if (authUrl) { try { window.open(authUrl, '_blank', 'noopener'); } catch(_) {} }
+}
+function copyAuthUrl() {
+  if (!_currentAuthUrl) return;
+  navigator.clipboard.writeText(_currentAuthUrl).catch(() => {
+    const ta = document.createElement('textarea');
+    ta.value = _currentAuthUrl; document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
+  });
+  const btn = document.getElementById('copy-url-btn');
+  const orig = btn.textContent; btn.textContent = 'Copied!';
+  setTimeout(() => btn.textContent = orig, 1500);
 }
 
 function loadAccounts() {
