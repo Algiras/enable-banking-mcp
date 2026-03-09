@@ -65,6 +65,7 @@
   .status-badge {
     font-size: 10px; font-weight: 600; letter-spacing: 0.04em;
     padding: 2px 7px; border-radius: 10px; white-space: nowrap; flex-shrink: 0;
+    max-width: 160px; overflow: hidden; text-overflow: ellipsis;
   }
   .status-authorized { background: color-mix(in srgb, var(--green) 15%, transparent); color: var(--green); border: 1px solid color-mix(in srgb, var(--green) 30%, transparent); }
   .status-expired    { background: color-mix(in srgb, var(--gold) 15%, transparent);  color: var(--gold);  border: 1px solid color-mix(in srgb, var(--gold)  30%, transparent); }
@@ -288,10 +289,10 @@ window.renderData = function(data) {
 
     return `<div class="card" data-sid="${s.session_id}">
       <div class="card-head">
-        <div>
+        <div style="min-width:0;overflow:hidden">
           <div class="bank-name">${s.bank || 'Unknown bank'} <span class="country-flag">${flag}</span></div>
         </div>
-        <span class="status-badge ${sCls}">${status}</span>
+        <span class="status-badge ${sCls}" title="${status}">${status}</span>
       </div>
       ${label}
       <div class="meta-row">
