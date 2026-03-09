@@ -108,6 +108,9 @@
   <h1>Accounts</h1>
   <span class="count-badge" id="count">—</span>
 </div>
+<div id="timeout-msg" style="display:none;text-align:center;color:var(--muted);padding:32px">
+  No data received. Call <code style="color:var(--blue)">list_accounts</code> with a session_id.
+</div>
 <div id="root"><div class="loading">Waiting for data…</div></div>
 
 <script>
@@ -120,6 +123,8 @@ new ResizeObserver(reportSize).observe(document.body);
 let dataReceived = false;
 
 window.renderData = function(data) {
+  dataReceived = true;
+  document.getElementById('timeout-msg').style.display = 'none';
   const root = document.getElementById('root');
   const sessionId = data.session_id || '—';
   const status = (data.session_status || 'UNKNOWN').toUpperCase();
@@ -189,6 +194,10 @@ window.addEventListener('message', function(event) {
     return;
   }
 });
+
+setTimeout(() => {
+  if (!dataReceived) document.getElementById('timeout-msg').style.display = '';
+}, 5000);
 
 try {
   window.parent.postMessage({

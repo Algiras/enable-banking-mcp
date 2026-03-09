@@ -112,7 +112,10 @@
 <body>
 <div class="header">
   <h1>Sessions Dashboard</h1>
-  <span class="count-badge" id="count">—</span>
+  <div style="display:flex;gap:8px;align-items:center">
+    <span class="count-badge" id="count">—</span>
+    <button class="btn" id="refresh-btn" onclick="refreshSessions()" style="flex:none">↻ Refresh</button>
+  </div>
 </div>
 <div id="root"><div class="loading">Waiting for data…</div></div>
 
@@ -131,6 +134,20 @@ function callTool(name, args, cb) {
   _pending[id] = cb;
   try { window.parent.postMessage({ jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: args } }, '*'); } catch(_) {}
 }
+function refreshSessions() {
+  const btn = document.getElementById('refresh-btn');
+  btn.disabled = true; btn.textContent = 'Loading…';
+  callTool('list_sessions', {}, (result, err) => {
+    btn.disabled = false; btn.textContent = '↻ Refresh';
+    if (err || result?.isError) return;
+    try {
+      const text = result?.content?.[0]?.text;
+      const data = result?.structuredContent || (text ? JSON.parse(text) : null);
+      if (data) window.renderData(data);
+    } catch(e) { console.error(e); }
+  });
+}
+
 function deleteSession(sid) {
   const card = document.querySelector(`[data-sid="${sid}"]`);
   const btn = card?.querySelector('.btn-danger');
@@ -260,6 +277,13 @@ window.addEventListener('message', function(event) {
     return;
   }
 });
+
+setTimeout(() => {
+  if (!dataReceived) {
+    document.getElementById('root').innerHTML =
+      '<div class="empty-state"><div class="empty-icon">🔒</div><p>No data received.</p><p style="font-size:11px;margin-top:6px">Call <code style="color:var(--blue)">list_sessions</code> or click ↻ Refresh.</p></div>';
+  }
+}, 5000);
 
 try {
   window.parent.postMessage({

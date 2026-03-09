@@ -189,15 +189,17 @@ window.renderData = function(data) {
   const txn = txns[0] || {};
   const amount = txn.instructed_amount?.amount;
   const currency = txn.instructed_amount?.currency;
-  const creditorName = txn.creditor?.name || '—';
-  const creditorIban = txn.creditor_account?.iban || '';
+  const creditorName = txn.beneficiary?.creditor?.name || txn.creditor?.name || '—';
+  const creditorIban = txn.beneficiary?.creditor_account?.identification
+    || txn.creditor_account?.identification || txn.creditor_account?.iban || '';
   const remittance = (txn.remittance_information || []).join(', ') || '—';
-  const paymentType = data.payment_request?.payment_type || '—';
-  const execDate = data.payment_request?.requested_execution_date;
+  const paymentType = data.payment_type || data.payment_request?.payment_type || '—';
+  const execDate = txn.requested_execution_date || data.payment_request?.requested_execution_date;
   const redirectUrl = data.aspsp_redirect_url;
   const paymentId = data.payment_id || data.id || '—';
   const createdAt = data.created_at;
-  const debtorIban = txn.debtor_account?.iban;
+  const debtorIban = data.payment_request?.debtor_account?.identification
+    || txn.debtor_account?.identification || txn.debtor_account?.iban;
 
   // Timeline
   const rejected = status === 'REJECTED' || status === 'CANCELLED';
@@ -255,8 +257,11 @@ window.renderData = function(data) {
     ${detailRows ? `<div class="details-grid">${detailRows}</div>` : ''}
 
     ${redirectUrl ? `<div class="redirect-box">
-      <div class="redirect-label">Authorization URL</div>
-      <a class="redirect-link" href="${redirectUrl}" target="_blank">${redirectUrl}</a>
+      <div class="redirect-label">Authorization URL — click to select, then Cmd+C / Ctrl+C to copy</div>
+      <input type="text" readonly onclick="this.select()" value="${redirectUrl.replace(/"/g, '&quot;')}"
+        style="width:100%;background:var(--bg);border:none;color:var(--blue);font-size:11px;
+        font-family:ui-monospace,monospace;padding:4px 0;cursor:pointer;outline:none;
+        overflow:hidden;text-overflow:ellipsis;">
     </div>` : ''}
 
     <div class="pid-box">

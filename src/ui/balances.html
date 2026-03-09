@@ -30,6 +30,17 @@
         --gold: #9a6700;
       }
     }
+    [data-theme="light"] {
+      --bg: #ffffff;
+      --surface: #f6f8fa;
+      --border: #d0d7de;
+      --text: #1f2328;
+      --muted: #636c76;
+      --green: #1a7f37;
+      --red: #cf222e;
+      --blue: #0969da;
+      --gold: #9a6700;
+    }
 
     * {
       box-sizing: border-box;
@@ -121,7 +132,10 @@
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+      cursor: pointer;
+      user-select: all;
     }
+    .iban:hover { color: var(--blue); }
 
     .amount {
       font-size: 28px;
@@ -208,7 +222,7 @@
         return `<div class="card" style="--accent: ${color}">
       <div class="bank">${b.bank_name ?? 'Bank'}</div>
       <div class="account-name">${b.account_name ?? b.name ?? 'Account'}</div>
-      <div class="iban" title="${b.account_id ?? ''}">${b.account_id ?? '—'}</div>
+      <div class="iban" title="Click to select" onclick="this.select ? this.select() : window.getSelection().selectAllChildren(this)">${b.account_id ?? '—'}</div>
       <div class="amount" style="color:${positive ? 'var(--green)' : 'var(--red)'}">${fmt(amount, cur)}</div>
       <span class="type-badge">${b.balance_type ?? b.type ?? 'CLBD'}</span>
       ${expiryHtml}
