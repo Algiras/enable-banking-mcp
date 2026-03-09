@@ -327,23 +327,28 @@ fn build_tools() -> Vec<Tool> {
 
 // ─── Server struct ────────────────────────────────────────────────────────────
 
+const DEFAULT_REDIRECT_URL: &str = "https://algiras.github.io/enable-banking-mcp/callback";
+
 #[derive(Clone)]
 pub struct EnableBankingServer {
-    client:   Arc<ApiClient>,
-    app_id:   Option<String>,
-    raw_key:  Option<String>,
-    env_mode: String,
-    base:     String,
+    client:       Arc<ApiClient>,
+    app_id:       Option<String>,
+    raw_key:      Option<String>,
+    env_mode:     String,
+    base:         String,
+    redirect_url: String,
 }
 
 impl EnableBankingServer {
     pub fn from_env() -> Self {
-        let env_mode = std::env::var("ENABLE_BANKING_ENV").unwrap_or_else(|_| "sandbox".to_string());
-        let app_id   = std::env::var("ENABLE_BANKING_APP_ID").ok();
-        let raw_key  = std::env::var("ENABLE_BANKING_PRIVATE_KEY").ok();
-        let client   = ApiClient::new(PsuHeaders::from_env(), "https://api.enablebanking.com");
-        let base     = client.base.clone();
-        Self { client: Arc::new(client), app_id, raw_key, env_mode, base }
+        let env_mode     = std::env::var("ENABLE_BANKING_ENV").unwrap_or_else(|_| "sandbox".to_string());
+        let app_id       = std::env::var("ENABLE_BANKING_APP_ID").ok();
+        let raw_key      = std::env::var("ENABLE_BANKING_PRIVATE_KEY").ok();
+        let redirect_url = std::env::var("REDIRECT_URL")
+            .unwrap_or_else(|_| DEFAULT_REDIRECT_URL.to_string());
+        let client       = ApiClient::new(PsuHeaders::from_env(), "https://api.enablebanking.com");
+        let base         = client.base.clone();
+        Self { client: Arc::new(client), app_id, raw_key, env_mode, base, redirect_url }
     }
 
     /// Return data as both text content (model context) and structuredContent (UI rendering).
@@ -438,7 +443,7 @@ impl EnableBankingServer {
             "start_authorization" => {
                 let token = match self.jwt() { Ok(t) => t, Err(e) => return err_result(e) };
                 let r_url = args.opt_str("redirect_url")
-                    .unwrap_or_else(|| "https://algiras.github.io/enable-banking-mcp/callback".to_string());
+                    .unwrap_or_else(|| self.redirect_url.clone());
                 let state = args.str("state");
                 let body = AuthRequest::new(
                     &args.str("bank_name"), &args.str("country"),
@@ -865,7 +870,7 @@ impl ServerHandler for EnableBankingServer {
             ));
         };
 
-        let html = html_tpl.to_string();
+        let html = html_tpl.replace("{{REDIRECT_URL}}", &self.redirect_url);
 
         Ok(ReadResourceResult::new(vec![
             ResourceContents::TextResourceContents {
