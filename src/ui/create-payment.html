@@ -243,7 +243,13 @@
     <div class="result-sub">Copy the URL below and open it in your browser to authorise</div>
   </div>
   <div class="auth-link-box">
-    <div class="auth-link-label">Bank Authorisation URL — click to select, then Cmd+C / Ctrl+C</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+      <div class="auth-link-label" style="margin-bottom:0">Bank Authorisation URL</div>
+      <button id="copy-url-btn" onclick="copyAuthUrl()"
+        style="background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--muted);cursor:pointer;font-size:11px;font-weight:600;padding:4px 10px;transition:border-color .15s,color .15s"
+        onmouseover="this.style.borderColor='var(--blue)';this.style.color='var(--blue)'"
+        onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--muted)'">Copy</button>
+    </div>
     <input id="auth-url-text" type="text" readonly onclick="this.select()"
       style="width:100%;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--blue);padding:8px 10px;font-size:11px;font-family:ui-monospace,monospace;word-break:break-all;cursor:pointer;outline:none">
   </div>
