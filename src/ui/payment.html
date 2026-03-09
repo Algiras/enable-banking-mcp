@@ -134,6 +134,16 @@
 </style>
 </head>
 <body>
+<div id="toolbar" style="display:none;margin-bottom:12px;display:none">
+  <button id="refresh-btn" onclick="refreshStatus()"
+    style="background:var(--surface);border:1px solid var(--border);border-radius:7px;
+    color:var(--muted);cursor:pointer;font-size:11px;font-weight:600;padding:5px 12px;
+    transition:border-color .15s,color .15s"
+    onmouseover="this.style.borderColor='var(--blue)';this.style.color='var(--blue)'"
+    onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--muted)'">
+    ↻ Refresh Status
+  </button>
+</div>
 <div id="root"><div class="loading">Waiting for data…</div></div>
 
 <script>
@@ -144,6 +154,38 @@ function reportSize() {
 new ResizeObserver(reportSize).observe(document.body);
 
 let dataReceived = false;
+let _paymentId = null;
+let _callId = 10;
+const _pending = {};
+
+function callTool(name, args, cb) {
+  const id = _callId++;
+  _pending[id] = cb;
+  try { window.parent.postMessage({ jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: args } }, '*'); } catch(_) {}
+}
+
+function copyPid(box, text) {
+  try { navigator.clipboard.writeText(text).catch(() => {}); } catch(_) {}
+  const el = box.querySelector('#pid-val') || box;
+  const orig = el.textContent;
+  el.textContent = '✓ Copied';
+  setTimeout(() => { el.textContent = orig; }, 1200);
+}
+
+function refreshStatus() {
+  if (!_paymentId) return;
+  const btn = document.getElementById('refresh-btn');
+  btn.disabled = true; btn.textContent = 'Refreshing…';
+  callTool('get_payment', { payment_id: _paymentId }, (result, err) => {
+    btn.disabled = false; btn.textContent = '↻ Refresh Status';
+    if (err || result?.isError) return;
+    try {
+      const text = result?.content?.[0]?.text;
+      const data = result?.structuredContent || (text ? JSON.parse(text) : null);
+      if (data) window.renderData(data);
+    } catch(e) { console.error(e); }
+  });
+}
 
 const STATUS_CONFIG = {
   PENDING:    { hero: 'hero-pending',    txt: 'txt-pending',    icon: '⏳', sub: 'Awaiting bank authorization' },
@@ -180,8 +222,13 @@ function fmtAmount(amountStr, currency) {
 }
 
 window.renderData = function(data) {
+  dataReceived = true;
   const root = document.getElementById('root');
   const status = (data.status || 'UNKNOWN').toUpperCase();
+  if (data.payment_id || data.id) {
+    _paymentId = data.payment_id || data.id;
+    document.getElementById('toolbar').style.display = 'block';
+  }
   const cfg = STATUS_CONFIG[status] || { hero: 'hero-default', txt: 'txt-default', icon: '❓', sub: 'Unknown status' };
 
   // Extract payment details
@@ -264,9 +311,9 @@ window.renderData = function(data) {
         overflow:hidden;text-overflow:ellipsis;">
     </div>` : ''}
 
-    <div class="pid-box">
+    <div class="pid-box" onclick="copyPid(this, '${paymentId}')" title="Click to copy">
       <div class="pid-label">Payment ID</div>
-      ${paymentId}
+      <span id="pid-val">${paymentId}</span>
     </div>
   `;
 };
@@ -279,6 +326,9 @@ window.addEventListener('message', function(event) {
     if (hc?.theme === 'light') document.documentElement.setAttribute('data-theme', 'light');
     try { window.parent.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/initialized', params: {} }, '*'); } catch(_) {}
     return;
+  }
+  if (msg.jsonrpc === '2.0' && typeof msg.id === 'number' && msg.id >= 10 && _pending[msg.id]) {
+    const cb = _pending[msg.id]; delete _pending[msg.id]; cb(msg.result, msg.error); return;
   }
   if (msg.jsonrpc === '2.0' && msg.method === 'ui/notifications/tool-result') {
     try {

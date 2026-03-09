@@ -185,7 +185,8 @@
     <h2>Account Balances</h2>
     <div style="display:flex;gap:8px;align-items:center">
       <span class="badge" id="badge" style="display:none"></span>
-      <button class="refresh-btn" id="refresh-btn" style="display:none" onclick="requestRefresh()">↻ Refresh</button>
+      <button class="refresh-btn" id="txns-btn" style="display:none" onclick="viewTransactions()">Transactions</button>
+      <button class="refresh-btn" id="refresh-btn" style="display:none" onclick="refreshBalances()">↻ Refresh</button>
     </div>
   </div>
   <div class="grid" id="grid">
@@ -194,6 +195,14 @@
 
   <script>
     const COLORS = ['var(--blue)', 'var(--green)', 'var(--gold)', '#bc8cff', '#ff7b72'];
+    let _uiParams = null;
+    let _callId = 10;
+    const _pending = {};
+    function callTool(name, args, cb) {
+      const id = _callId++;
+      _pending[id] = cb;
+      try { window.parent.postMessage({ jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: args } }, '*'); } catch(_) {}
+    }
     function fmt(n, cur) {
       return new Intl.NumberFormat(undefined, { style: 'currency', currency: cur || 'EUR', maximumFractionDigits: 2 }).format(n);
     }
@@ -238,16 +247,48 @@
     }
     new ResizeObserver(reportSize).observe(document.body);
 
-    function requestRefresh() {
-      try { window.parent.postMessage({ jsonrpc: '2.0', id: 99, method: 'ui/message',
-        params: { content: [{ type: 'text', text: 'Please refresh the account balances' }] } }, '*'); } catch(_) {}
+    function refreshBalances() {
+      if (!_uiParams) return;
+      const btn = document.getElementById('refresh-btn');
+      btn.disabled = true; btn.textContent = 'Loading…';
+      callTool('get_account_balances', { account_id: _uiParams.account_id, session_id: _uiParams.session_id }, (result, err) => {
+        btn.disabled = false; btn.textContent = '↻ Refresh';
+        if (err || result?.isError) return;
+        try {
+          const text = result?.content?.[0]?.text;
+          const data = result?.structuredContent || (text ? JSON.parse(text) : null);
+          if (data) window.renderData(data);
+        } catch(e) { console.error(e); }
+      });
+    }
+
+    function viewTransactions() {
+      if (!_uiParams) return;
+      const btn = document.getElementById('txns-btn');
+      btn.disabled = true; btn.textContent = 'Loading…';
+      callTool('get_account_transactions', { account_id: _uiParams.account_id, session_id: _uiParams.session_id }, (result, err) => {
+        btn.disabled = false; btn.textContent = 'Transactions';
+        if (err || result?.isError) return;
+        try {
+          const text = result?.content?.[0]?.text;
+          const data = result?.structuredContent || (text ? JSON.parse(text) : null);
+          if (data) window.renderData(data);
+        } catch(e) { console.error(e); }
+      });
     }
 
     let dataReceived = false;
     window.renderData = function(json) {
       dataReceived = true;
-      document.getElementById('refresh-btn').style.display = '';
-      try { render(typeof json === 'string' ? JSON.parse(json) : json); } catch(e) { console.error(e); }
+      const data = typeof json === 'string' ? JSON.parse(json) : json;
+      if (data._ui_params) {
+        _uiParams = data._ui_params;
+        document.getElementById('refresh-btn').style.display = '';
+        document.getElementById('txns-btn').style.display = '';
+      } else {
+        document.getElementById('refresh-btn').style.display = '';
+      }
+      try { render(data); } catch(e) { console.error(e); }
     };
 
     window.addEventListener('message', function(event) {
@@ -259,6 +300,9 @@
         if (hc?.theme === 'light') document.documentElement.setAttribute('data-theme', 'light');
         try { window.parent.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/initialized', params: {} }, '*'); } catch(_) {}
         return;
+      }
+      if (msg.jsonrpc === '2.0' && typeof msg.id === 'number' && msg.id >= 10 && _pending[msg.id]) {
+        const cb = _pending[msg.id]; delete _pending[msg.id]; cb(msg.result, msg.error); return;
       }
       // Tool result notification — contains the balance data
       if (msg.jsonrpc === '2.0' && msg.method === 'ui/notifications/tool-result') {

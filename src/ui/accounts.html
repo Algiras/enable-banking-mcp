@@ -27,7 +27,6 @@
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
-    
     background: var(--bg); color: var(--text);
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
     font-size: 13px; line-height: 1.5; padding: 16px;
@@ -47,7 +46,9 @@
   .session-id-mono {
     font-family: ui-monospace, monospace; font-size: 11px;
     color: var(--blue); cursor: pointer; user-select: all;
+    transition: opacity .15s;
   }
+  .session-id-mono:hover { opacity: .75; }
   .status-pill {
     font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 10px;
     letter-spacing: 0.04em;
@@ -65,14 +66,16 @@
     padding: 1px 7px; border-radius: 10px;
   }
   .account-list { display: flex; flex-direction: column; gap: 6px; }
-  .account-row {
+  .account-card {
     background: var(--card-bg); border: 1px solid var(--border);
-    border-radius: 7px; padding: 10px 14px;
+    border-radius: 7px; overflow: hidden; transition: border-color 0.15s;
+  }
+  .account-card:hover { border-color: var(--blue); }
+  .account-row {
+    padding: 10px 14px;
     display: grid; grid-template-columns: 28px 1fr auto;
     align-items: center; gap: 10px;
-    transition: border-color 0.15s;
   }
-  .account-row:hover { border-color: var(--blue); }
   .acct-index {
     width: 24px; height: 24px; border-radius: 50%;
     background: color-mix(in srgb, var(--blue) 12%, transparent);
@@ -84,14 +87,43 @@
     font-family: ui-monospace, monospace; font-size: 11px;
     color: var(--text); user-select: all; cursor: pointer;
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    transition: color .15s;
   }
   .acct-uid:hover { color: var(--blue); }
+  .acct-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
   .hash-tag {
     font-size: 10px; color: var(--muted); white-space: nowrap;
     background: var(--bg); border: 1px solid var(--border);
     padding: 1px 6px; border-radius: 4px;
     font-family: ui-monospace, monospace;
   }
+  .acct-btn {
+    font-size: 11px; font-weight: 600; padding: 3px 9px;
+    border: 1px solid var(--border); border-radius: 5px;
+    background: var(--surface); color: var(--muted); cursor: pointer;
+    transition: border-color .15s, color .15s; white-space: nowrap;
+  }
+  .acct-btn:hover:not(:disabled) { border-color: var(--blue); color: var(--blue); }
+  .acct-btn:disabled { opacity: .4; cursor: default; }
+  .acct-result {
+    border-top: 1px solid var(--border);
+    padding: 10px 14px; font-size: 12px;
+    background: var(--bg);
+  }
+  .bal-list { display: flex; flex-wrap: wrap; gap: 8px; }
+  .bal-item {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 6px; padding: 6px 10px; min-width: 110px;
+  }
+  .bal-type { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  .bal-amt { font-size: 16px; font-weight: 700; margin-top: 2px; }
+  .mini-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  .mini-table th { color: var(--muted); font-weight: 600; text-align: left; padding: 4px 6px; border-bottom: 1px solid var(--border); }
+  .mini-table td { padding: 5px 6px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+  .mini-table tr:last-child td { border-bottom: none; }
+  .mini-table .amt { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+  .empty-state { text-align: center; padding: 48px 16px; color: var(--muted); }
+  .loading { color: var(--muted); padding: 32px; text-align: center; }
   .hint {
     margin-top: 14px; padding: 10px 14px;
     background: color-mix(in srgb, var(--blue) 8%, transparent);
@@ -99,8 +131,6 @@
     border-radius: 7px; font-size: 11px; color: var(--muted);
   }
   .hint code { color: var(--blue); font-family: ui-monospace, monospace; font-size: 10.5px; }
-  .empty-state { text-align: center; padding: 48px 16px; color: var(--muted); }
-  .loading { color: var(--muted); padding: 32px; text-align: center; }
 </style>
 </head>
 <body>
@@ -121,6 +151,103 @@ function reportSize() {
 new ResizeObserver(reportSize).observe(document.body);
 
 let dataReceived = false;
+let _sessionId = null;
+let _callId = 10;
+const _pending = {};
+
+function callTool(name, args, cb) {
+  const id = _callId++;
+  _pending[id] = cb;
+  try { window.parent.postMessage({ jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: args } }, '*'); } catch(_) {}
+}
+
+function fmt(amount, currency) {
+  return new Intl.NumberFormat(undefined, {
+    style: 'currency', currency: currency || 'EUR', maximumFractionDigits: 2
+  }).format(parseFloat(amount) || 0);
+}
+
+function copyWithFeedback(el) {
+  const text = el.dataset.copyVal || el.textContent;
+  try { navigator.clipboard.writeText(text).catch(() => {}); } catch(_) {}
+  const orig = el.textContent;
+  el.textContent = '✓ Copied';
+  setTimeout(() => { el.textContent = orig; }, 1200);
+}
+
+function viewBalances(uid, rowIdx) {
+  if (!_sessionId) return;
+  const panel = document.getElementById(`acct-result-${rowIdx}`);
+  panel.style.display = 'block';
+  panel.innerHTML = '<span style="color:var(--muted)">Loading balances…</span>';
+  reportSize();
+  callTool('get_account_balances', { account_id: uid, session_id: _sessionId }, (result, err) => {
+    if (err || result?.isError) {
+      panel.innerHTML = `<span style="color:var(--red)">${result?.content?.[0]?.text || String(err)}</span>`;
+      reportSize(); return;
+    }
+    try {
+      const text = result?.content?.[0]?.text;
+      const data = result?.structuredContent || (text ? JSON.parse(text) : null);
+      const balances = Array.isArray(data) ? data : (data?.balances || []);
+      if (!balances.length) { panel.innerHTML = '<span style="color:var(--muted)">No balances found.</span>'; reportSize(); return; }
+      panel.innerHTML = `<div class="bal-list">${balances.map(b => {
+        const amt = parseFloat(b.balance_amount?.amount ?? b.amount ?? 0);
+        const cur = b.balance_amount?.currency ?? b.currency ?? 'EUR';
+        const pos = amt >= 0;
+        return `<div class="bal-item">
+          <div class="bal-type">${b.balance_type ?? b.type ?? 'CLBD'}</div>
+          <div class="bal-amt" style="color:${pos ? 'var(--green)' : 'var(--red)'}">${fmt(amt, cur)}</div>
+        </div>`;
+      }).join('')}</div>`;
+    } catch(e) {
+      panel.innerHTML = `<span style="color:var(--red)">${e.message}</span>`;
+    }
+    reportSize();
+  });
+}
+
+function viewTransactions(uid, rowIdx) {
+  if (!_sessionId) return;
+  const panel = document.getElementById(`acct-result-${rowIdx}`);
+  panel.style.display = 'block';
+  panel.innerHTML = '<span style="color:var(--muted)">Loading transactions…</span>';
+  reportSize();
+  callTool('get_account_transactions', { account_id: uid, session_id: _sessionId }, (result, err) => {
+    if (err || result?.isError) {
+      panel.innerHTML = `<span style="color:var(--red)">${result?.content?.[0]?.text || String(err)}</span>`;
+      reportSize(); return;
+    }
+    try {
+      const text = result?.content?.[0]?.text;
+      const data = result?.structuredContent || (text ? JSON.parse(text) : null);
+      const allTxns = data?.transactions ?? (Array.isArray(data) ? data : []);
+      const txns = allTxns.slice(0, 10);
+      if (!txns.length) { panel.innerHTML = '<span style="color:var(--muted)">No transactions found.</span>'; reportSize(); return; }
+      panel.innerHTML = `<table class="mini-table">
+        <thead><tr><th>Date</th><th>Description</th><th style="text-align:right">Amount</th></tr></thead>
+        <tbody>${txns.map(t => {
+          const amt = parseFloat(t.transaction_amount?.amount ?? t.amount ?? 0);
+          const cur = t.transaction_amount?.currency ?? t.currency ?? 'EUR';
+          const credit = t.credit_debit_indicator === 'CRDT' || amt >= 0;
+          const desc = t.remittance_information?.[0] ?? t.creditor?.name ?? t.debtor?.name ?? '—';
+          const date = (t.booking_date ?? t.value_date ?? '').slice(0, 10);
+          return `<tr>
+            <td style="color:var(--muted);white-space:nowrap">${date}</td>
+            <td>${desc}</td>
+            <td class="amt" style="color:${credit ? 'var(--green)' : 'var(--red)'}">
+              ${credit ? '+' : ''}${fmt(Math.abs(amt), cur)}
+            </td>
+          </tr>`;
+        }).join('')}</tbody>
+      </table>
+      ${allTxns.length > 10 ? `<div style="text-align:center;color:var(--muted);font-size:10px;margin-top:6px">Showing 10 of ${allTxns.length}</div>` : ''}`;
+    } catch(e) {
+      panel.innerHTML = `<span style="color:var(--red)">${e.message}</span>`;
+    }
+    reportSize();
+  });
+}
 
 window.renderData = function(data) {
   dataReceived = true;
@@ -132,36 +259,35 @@ window.renderData = function(data) {
   const accountsData = data.accounts_data || [];
   const count = data.account_count != null ? data.account_count : accounts.length;
 
-  document.getElementById('count').textContent = `${count} account${count !== 1 ? 's' : ''}`;
+  if (sessionId !== '—') _sessionId = sessionId;
 
+  document.getElementById('count').textContent = `${count} account${count !== 1 ? 's' : ''}`;
   const statusCls = status === 'AUTHORIZED' ? 'status-authorized' : 'status-other';
 
-  // Build account rows — merge UID from accounts[] with hash from accounts_data[]
   const rows = accounts.map((uid, i) => {
     const uidStr = typeof uid === 'string' ? uid : (uid.uid || JSON.stringify(uid));
-    const data = accountsData.find(d => d.uid === uidStr);
-    const hash = data?.identification_hash;
+    const d = accountsData.find(d => d.uid === uidStr);
+    const hash = d?.identification_hash;
     const shortHash = hash ? hash.slice(0, 16) + '…' : '';
-    return `<div class="account-row">
-      <div class="acct-index">${i + 1}</div>
-      <div class="acct-uid" title="${uidStr}">${uidStr}</div>
-      ${shortHash ? `<span class="hash-tag" title="${hash}">${shortHash}</span>` : ''}
+    return `<div class="account-card">
+      <div class="account-row">
+        <div class="acct-index">${i + 1}</div>
+        <div class="acct-uid" data-copy-val="${uidStr}" onclick="copyWithFeedback(this)" title="Click to copy">${uidStr}</div>
+        <div class="acct-actions">
+          ${shortHash ? `<span class="hash-tag" title="${hash}">${shortHash}</span>` : ''}
+          <button class="acct-btn" onclick="viewBalances('${uidStr}', ${i})">Balances</button>
+          <button class="acct-btn" onclick="viewTransactions('${uidStr}', ${i})">Txns</button>
+        </div>
+      </div>
+      <div class="acct-result" id="acct-result-${i}" style="display:none"></div>
     </div>`;
   }).join('');
-
-  const hint = accounts.length > 0 ? `<div class="hint">
-    Use <code>get_account_balances</code> or <code>get_account_transactions</code> with an account ID above and <code>session_id: "${sessionId}"</code>
-  </div>` : '';
-
-  const noAccounts = accounts.length === 0
-    ? '<div class="empty-state">No accounts found for this session.</div>'
-    : '';
 
   root.innerHTML = `
     <div class="session-bar">
       <div>
         <div class="session-label">Session</div>
-        <div class="session-id-mono" title="Click to select">${sessionId}</div>
+        <div class="session-id-mono" data-copy-val="${sessionId}" onclick="copyWithFeedback(this)" title="Click to copy">${sessionId}</div>
       </div>
       <span class="status-pill ${statusCls}">${status}</span>
     </div>
@@ -171,8 +297,7 @@ window.renderData = function(data) {
         <span class="count-badge">${count}</span>
       </div>
       <div class="account-list">${rows}</div>
-    ` : noAccounts}
-    ${hint}
+    ` : '<div class="empty-state">No accounts found for this session.</div>'}
   `;
 };
 
@@ -184,6 +309,9 @@ window.addEventListener('message', function(event) {
     if (hc?.theme === 'light') document.documentElement.setAttribute('data-theme', 'light');
     try { window.parent.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/initialized', params: {} }, '*'); } catch(_) {}
     return;
+  }
+  if (msg.jsonrpc === '2.0' && typeof msg.id === 'number' && msg.id >= 10 && _pending[msg.id]) {
+    const cb = _pending[msg.id]; delete _pending[msg.id]; cb(msg.result, msg.error); return;
   }
   if (msg.jsonrpc === '2.0' && msg.method === 'ui/notifications/tool-result') {
     try {
@@ -204,7 +332,7 @@ try {
     jsonrpc: '2.0', id: 1, method: 'ui/initialize',
     params: { protocolVersion: '2026-01-26',
       appCapabilities: { availableDisplayModes: ['inline'] },
-      appInfo: { name: 'accounts-list', version: '1.0.0' } }
+      appInfo: { name: 'accounts-list', version: '2.0.0' } }
   }, '*');
 } catch(_) {}
 </script>

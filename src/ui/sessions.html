@@ -107,6 +107,24 @@
   .btn:hover:not(:disabled) { border-color: var(--blue); color: var(--blue); }
   .btn-danger:hover:not(:disabled) { border-color: var(--red) !important; color: var(--red) !important; }
   .btn:disabled { opacity: .4; cursor: default; }
+  .accounts-panel {
+    margin-top: 10px; padding: 8px 10px;
+    background: var(--bg); border: 1px solid var(--border);
+    border-radius: 6px; font-size: 11px;
+  }
+  .accounts-panel .acct-uid {
+    font-family: ui-monospace, monospace; color: var(--blue);
+    cursor: pointer; user-select: all; padding: 3px 0;
+    display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    transition: opacity .15s;
+  }
+  .accounts-panel .acct-uid:hover { opacity: .75; }
+  .accounts-panel .acct-num {
+    display: inline-block; width: 16px; height: 16px; border-radius: 50%;
+    background: color-mix(in srgb, var(--blue) 12%, transparent);
+    font-size: 9px; font-weight: 700; color: var(--blue);
+    text-align: center; line-height: 16px; margin-right: 6px; flex-shrink: 0;
+  }
 </style>
 </head>
 <body>
@@ -145,6 +163,54 @@ function refreshSessions() {
       const data = result?.structuredContent || (text ? JSON.parse(text) : null);
       if (data) window.renderData(data);
     } catch(e) { console.error(e); }
+  });
+}
+
+function copyWithFeedback(el) {
+  const text = el.dataset.copyVal || el.textContent;
+  try { navigator.clipboard.writeText(text).catch(() => {}); } catch(_) {}
+  const orig = el.textContent;
+  el.textContent = '✓ Copied';
+  setTimeout(() => { el.textContent = orig; }, 1200);
+}
+
+function viewAccounts(sid) {
+  const card = document.querySelector(`[data-sid="${sid}"]`);
+  const btn = card?.querySelector('.btn-accounts');
+  let panel = card?.querySelector('.accounts-panel');
+  // Toggle off if already showing
+  if (panel && panel.dataset.loaded) { panel.style.display = panel.style.display === 'none' ? '' : 'none'; reportSize(); return; }
+  if (!panel) {
+    panel = document.createElement('div');
+    panel.className = 'accounts-panel';
+    card.appendChild(panel);
+  }
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  panel.style.display = '';
+  panel.textContent = 'Loading accounts…';
+  callTool('list_accounts', { session_id: sid }, (result, err) => {
+    if (btn) { btn.disabled = false; btn.textContent = 'Accounts'; }
+    if (err || result?.isError) {
+      panel.innerHTML = `<span style="color:var(--red)">${result?.content?.[0]?.text || String(err)}</span>`;
+      reportSize(); return;
+    }
+    try {
+      const text = result?.content?.[0]?.text;
+      const data = result?.structuredContent || (text ? JSON.parse(text) : null);
+      const accounts = data?.accounts || (Array.isArray(data) ? data : []);
+      if (!accounts.length) { panel.textContent = 'No accounts found.'; reportSize(); return; }
+      panel.innerHTML = accounts.map((uid, i) => {
+        const uidStr = typeof uid === 'string' ? uid : (uid.uid || JSON.stringify(uid));
+        return `<div style="display:flex;align-items:center">
+          <span class="acct-num">${i + 1}</span>
+          <span class="acct-uid" data-copy-val="${uidStr}" onclick="copyWithFeedback(this)" title="Click to copy">${uidStr}</span>
+        </div>`;
+      }).join('');
+      panel.dataset.loaded = '1';
+    } catch(e) {
+      panel.innerHTML = `<span style="color:var(--red)">${e.message}</span>`;
+    }
+    reportSize();
   });
 }
 
@@ -246,8 +312,9 @@ window.renderData = function(data) {
         </svg>
         <span>Created ${fmtDate(s.created_at)}</span>
       </div>` : ''}
-      <div class="session-id-box" title="Click to select">${s.session_id}</div>
+      <div class="session-id-box" data-copy-val="${s.session_id}" onclick="copyWithFeedback(this)" title="Click to copy">${s.session_id}</div>
       <div class="card-actions">
+        <button class="btn btn-accounts" onclick="viewAccounts('${s.session_id}')">Accounts</button>
         <button class="btn btn-danger" onclick="deleteSession('${s.session_id}')">Delete</button>
       </div>
     </div>`;
