@@ -414,7 +414,19 @@ impl EnableBankingServer {
                 } else {
                     format!("{}/aspsps?{}", self.base, qs.join("&"))
                 };
-                api_get!(self.client, token, url)
+                tracing::debug!("get_available_banks GET {url}");
+                match self.client.get(&token, &url).await {
+                    Ok(d) => {
+                        let count = d.as_array().map(|a| a.len())
+                            .or_else(|| d["aspsps"].as_array().map(|a| a.len()))
+                            .unwrap_or(0);
+                        tracing::info!("get_available_banks: {count} banks returned for url={url}");
+                        tracing::debug!("get_available_banks response snippet: {}",
+                            serde_json::to_string(&d).unwrap_or_default().chars().take(300).collect::<String>());
+                        ok_result(d)
+                    }
+                    Err(e) => { tracing::error!("get_available_banks error: {e}"); err_result(e.to_string()) }
+                }
             }
 
             "get_application" => {
@@ -532,7 +544,7 @@ impl EnableBankingServer {
                 match self.client.post(&token, &url, &body).await {
                     Ok(d) => {
                         if let Err(e) = sessions::persist_from_response(&d, label.as_deref()) {
-                            eprintln!("Warning: could not persist session: {e}");
+                            tracing::warn!("could not persist session: {e}");
                         }
                         ok_result(d)
                     }
@@ -706,10 +718,10 @@ impl EnableBankingServer {
                 );
                 let url = format!("{}/payments", self.base);
                 let body_json = serde_json::to_string_pretty(&body).unwrap_or_default();
-                eprintln!("[create_payment] POST {url}\n{body_json}");
+                tracing::debug!("create_payment POST {url}\n{body_json}");
                 match self.client.post(&token, &url, &body).await {
-                    Ok(d)  => { eprintln!("[create_payment] OK: {d}"); ok_result(d) }
-                    Err(e) => { eprintln!("[create_payment] ERR: {e}"); err_result(e.to_string()) }
+                    Ok(d)  => { tracing::info!("create_payment OK: {d}"); ok_result(d) }
+                    Err(e) => { tracing::error!("create_payment error: {e}"); err_result(e.to_string()) }
                 }
             }
 

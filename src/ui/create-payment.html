@@ -303,20 +303,21 @@ function onCountryInput(el) {
   _bankFetchCountry = country;
   const status = document.getElementById('bank-load-status');
   status.textContent = 'Loading banks…'; status.style.display = '';
-  callTool('get_available_banks', { country, psu_type: 'personal' }, function(result, err) {
-    if (err || result?.isError) { status.style.display = 'none'; return; }
+  callTool('get_available_banks', { country, service: 'PIS' }, function(result, err) {
+    if (err) { status.textContent = 'Error fetching banks'; _bankFetchCountry = null; return; }
+    if (result?.isError) { status.textContent = result?.content?.[0]?.text || 'API error'; _bankFetchCountry = null; return; }
     try {
       const text = result?.content?.[0]?.text || '';
-      const data = result?.structuredContent || JSON.parse(text);
-      const banks = Array.isArray(data) ? data : (data.banks || data.aspsps || []);
+      const data = result?.structuredContent || (text ? JSON.parse(text) : null);
+      const banks = Array.isArray(data) ? data : (data?.banks || data?.aspsps || []);
       const dl = document.getElementById('bank-list');
       dl.innerHTML = banks.map(b => {
         const name = typeof b === 'string' ? b : (b.name || b.full_name || '');
-        return name ? `<option value="${name.replace(/"/g,'')}">` : '';
+        return name ? `<option value="${name.replace(/"/g, '')}">` : '';
       }).join('');
-      status.textContent = `${banks.length} banks available`;
+      status.textContent = banks.length > 0 ? `${banks.length} banks` : `No PIS banks found for ${country}`;
       setTimeout(() => status.style.display = 'none', 2000);
-    } catch(_) { status.style.display = 'none'; }
+    } catch(e) { status.textContent = 'Parse error: ' + e.message; _bankFetchCountry = null; }
   });
 }
 
