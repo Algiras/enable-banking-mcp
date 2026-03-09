@@ -126,6 +126,26 @@
     font-size: 9px; font-weight: 700; color: var(--blue);
     text-align: center; line-height: 16px; margin-right: 6px; flex-shrink: 0;
   }
+  .banner {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 10px 14px; border-radius: 8px; margin-bottom: 14px;
+    background: color-mix(in srgb, var(--gold) 12%, transparent);
+    border: 1px solid color-mix(in srgb, var(--gold) 35%, transparent);
+    font-size: 12px; color: var(--text);
+  }
+  .banner-actions { display: flex; gap: 6px; flex-shrink: 0; }
+  .btn-primary {
+    background: var(--blue); color: #fff; border: none;
+    border-radius: 6px; padding: 5px 12px; font-size: 11px; font-weight: 600;
+    cursor: pointer; white-space: nowrap;
+  }
+  .btn-primary:hover { opacity: .85; }
+  .btn-reconnect {
+    background: none; border: 1px solid var(--blue); color: var(--blue);
+    border-radius: 5px; padding: 3px 9px; font-size: 10px; font-weight: 600;
+    cursor: pointer; white-space: nowrap;
+  }
+  .btn-reconnect:hover { background: color-mix(in srgb, var(--blue) 12%, transparent); }
 </style>
 </head>
 <body>
@@ -134,8 +154,10 @@
   <div style="display:flex;gap:8px;align-items:center">
     <span class="count-badge" id="count">—</span>
     <button class="btn" id="refresh-btn" onclick="refreshSessions()" style="flex:none">↻ Refresh</button>
+    <button class="btn-primary" onclick="connectBank()">+ Connect Bank</button>
   </div>
 </div>
+<div id="banner" style="display:none"></div>
 <div id="root"><div class="loading">Waiting for data…</div></div>
 
 <script>
@@ -153,6 +175,19 @@ function callTool(name, args, cb) {
   _pending[id] = cb;
   try { window.parent.postMessage({ jsonrpc: '2.0', id, method: 'tools/call', params: { name, arguments: args } }, '*'); } catch(_) {}
 }
+function connectBank() {
+  // 1. Direct tool call — host may open ui://connect-bank resource if it honours result _meta
+  callTool('connect_bank_ui', {}, () => {});
+  // 2. ui/message — LLM receives as user turn and calls connect_bank_ui (spec: SEP-1865 ui/message)
+  try {
+    window.parent.postMessage({
+      jsonrpc: '2.0', id: _callId++,
+      method: 'ui/message',
+      params: { role: 'user', content: [{ type: 'text', text: 'Connect a new bank account' }] }
+    }, '*');
+  } catch(_) {}
+}
+
 function refreshSessions() {
   const btn = document.getElementById('refresh-btn');
   btn.disabled = true; btn.textContent = 'Loading…';
@@ -162,7 +197,7 @@ function refreshSessions() {
     try {
       const text = result?.content?.[0]?.text;
       const data = result?.structuredContent || (text ? JSON.parse(text) : null);
-      if (data) window.renderData(data);
+      if (data) { dataReceived = true; window.renderData(data); }
     } catch(e) { console.error(e); }
   });
 }
@@ -220,10 +255,19 @@ function deleteSession(sid) {
   const btn = card?.querySelector('.btn-danger');
   if (btn) { btn.disabled = true; btn.textContent = 'Deleting…'; }
   callTool('delete_session', { session_id: sid }, (result, err) => {
-    if (err || result?.isError) {
+    const raw = result?.content?.[0]?.text || '';
+    const alreadyGone = raw.includes('EXPIRED_SESSION') || raw.includes('SESSION_DOES_NOT_EXIST');
+    if ((err || result?.isError) && !alreadyGone) {
       if (btn) { btn.disabled = false; btn.textContent = 'Delete'; }
+      if (card) {
+        let errEl = card.querySelector('.delete-err');
+        if (!errEl) { errEl = document.createElement('div'); errEl.className = 'delete-err'; errEl.style.cssText = 'color:var(--red);font-size:10px;margin-top:6px'; card.appendChild(errEl); }
+        errEl.textContent = raw || 'Delete failed';
+        setTimeout(() => errEl?.remove(), 3000);
+      }
       return;
     }
+    // Success or session already gone — remove from UI
     if (card) {
       card.style.transition = 'opacity 0.3s';
       card.style.opacity = '0';
@@ -231,6 +275,7 @@ function deleteSession(sid) {
         card.remove();
         const n = document.querySelectorAll('.card').length;
         document.getElementById('count').textContent = `${n} session${n !== 1 ? 's' : ''}`;
+        if (n === 0) document.getElementById('root').innerHTML = '<div class="empty-state"><div class="empty-icon">🔒</div><p>No sessions found.</p><p style="margin-top:8px"><button class="btn-primary" onclick="connectBank()">Connect a Bank</button></p></div>';
       }, 300);
     }
   });
@@ -270,19 +315,36 @@ function countryFlag(code) {
   return code.toUpperCase().split('').map(c => String.fromCodePoint(0x1F1E6 - 65 + c.charCodeAt(0))).join('');
 }
 
+function isDeadStatus(status) {
+  const u = String(status || '').toUpperCase();
+  return u.startsWith('ERROR') || u === 'EXPIRED' || u === 'REVOKED' || u === 'UNAUTHORIZED' || u === 'UNKNOWN';
+}
+
 window.renderData = function(data) {
   const sessions = Array.isArray(data) ? data : (data.data ? data.data : [data]);
   const root = document.getElementById('root');
+  const banner = document.getElementById('banner');
   document.getElementById('count').textContent = `${sessions.length} session${sessions.length !== 1 ? 's' : ''}`;
 
   if (sessions.length === 0) {
-    root.innerHTML = '<div class="empty-state"><div class="empty-icon">🔒</div><p>No sessions found.</p></div>';
+    banner.style.display = 'none';
+    root.innerHTML = '<div class="empty-state"><div class="empty-icon">🔒</div><p>No sessions found.</p><p style="margin-top:8px"><button class="btn-primary" onclick="connectBank()">Connect a Bank</button></p></div>';
     return;
+  }
+
+  const allDead = sessions.every(s => isDeadStatus(s.live_status || s.status));
+  if (allDead) {
+    banner.style.display = '';
+    banner.innerHTML = `<div class="banner"><span>All sessions have expired — connect a bank to use balances, transactions, or payments.</span><div class="banner-actions"><button class="btn-primary" onclick="connectBank()">Connect New Bank</button></div></div>`;
+  } else {
+    banner.style.display = 'none';
+    banner.innerHTML = '';
   }
 
   const cards = sessions.map(s => {
     const status = s.live_status || s.status || 'UNKNOWN';
     const sCls = statusClass(status);
+    const dead = isDeadStatus(status);
     const exp = expiryInfo(s.valid_until || s.valid_until_date);
     const flag = countryFlag(s.country);
     const label = s.label && s.label !== s.session_id ? `<div class="label-text" title="${s.label}">${s.label}</div>` : '';
@@ -315,7 +377,9 @@ window.renderData = function(data) {
       </div>` : ''}
       <div class="session-id-box" data-copy-val="${s.session_id}" onclick="copyWithFeedback(this)" title="Click to copy">${s.session_id}</div>
       <div class="card-actions">
-        <button class="btn btn-accounts" onclick="viewAccounts('${s.session_id}')">Accounts</button>
+        ${dead
+          ? `<button class="btn-reconnect" onclick="connectBank()">Reconnect</button>`
+          : `<button class="btn btn-accounts" onclick="viewAccounts('${s.session_id}')">Accounts</button>`}
         <button class="btn btn-danger" onclick="deleteSession('${s.session_id}')">Delete</button>
       </div>
     </div>`;
@@ -346,12 +410,15 @@ window.addEventListener('message', function(event) {
   }
 });
 
+// Auto-fetch on load — don't wait for host to push data
+setTimeout(() => { if (!dataReceived) refreshSessions(); }, 800);
+// Final fallback if fetch also fails
 setTimeout(() => {
   if (!dataReceived) {
     document.getElementById('root').innerHTML =
-      '<div class="empty-state"><div class="empty-icon">🔒</div><p>No data received.</p><p style="font-size:11px;margin-top:6px">Call <code style="color:var(--blue)">list_sessions</code> or click ↻ Refresh.</p></div>';
+      '<div class="empty-state"><div class="empty-icon">🔒</div><p>No data received.</p><p style="font-size:11px;margin-top:6px">Click ↻ Refresh to load sessions.</p></div>';
   }
-}, 5000);
+}, 10000);
 
 try {
   window.parent.postMessage({

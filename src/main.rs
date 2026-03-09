@@ -12,7 +12,7 @@ use std::path::PathBuf;
 use std::env;
 
 use api::{BlockingApiClient, AuthRequest, PsuHeaders};
-use server::{EnableBankingServer, generate_jwt, write_env_file};
+use server::{EnableBankingServer, canonical_env_path, generate_jwt, write_env_file};
 
 // ─── Entry point ──────────────────────────────────────────────────────────────
 
@@ -42,6 +42,8 @@ async fn async_main() -> anyhow::Result<()> {
             .add_directive("enable_banking_mcp=info".parse().unwrap()))
         .with_writer(std::io::stderr)
         .init();
+    // Load .env from canonical location first, then fall back to cwd
+    dotenvy::from_path(canonical_env_path()).ok();
     dotenv().ok();
 
     let srv = EnableBankingServer::from_env();
@@ -157,18 +159,19 @@ fn run_configure(auto_install: bool) {
     });
     println!("{}", serde_json::to_string_pretty(&config).unwrap());
 
-    print!("\nSave these to .env file in the current directory? [y/N]: ");
+    let env_path = canonical_env_path();
+    print!("\nSave credentials to {} ? [Y/n]: ", env_path.display());
     io::stdout().flush().ok();
     let mut confirm = String::new();
     io::stdin().read_line(&mut confirm).ok();
-    if confirm.trim().to_lowercase() == "y" {
+    if confirm.trim().to_lowercase() != "n" {
         let content = format!(
             "ENABLE_BANKING_ENV={}\nENABLE_BANKING_APP_ID={}\nENABLE_BANKING_PRIVATE_KEY=\"{}\"\n",
             env_mode, app_id, env_key
         );
-        match write_env_file(".env", &content) {
-            Ok(_)  => println!(".env saved successfully (owner-only permissions)."),
-            Err(e) => println!("Error saving .env: {}", e),
+        match write_env_file(&env_path, &content) {
+            Ok(_)  => println!("Credentials saved to {} (owner-only permissions).", env_path.display()),
+            Err(e) => println!("Error saving credentials: {}", e),
         }
     }
 }
@@ -270,8 +273,9 @@ fn run_register() {
             let content = format!(
                 "ENABLE_BANKING_ENV=production\nENABLE_BANKING_APP_ID={app_id}\nENABLE_BANKING_PRIVATE_KEY=\"{env_key}\"\nENABLE_BANKING_REDIRECT_URL={redirect}\n"
             );
-            if write_env_file(".env", &content).is_ok() {
-                println!(".env saved with production credentials (owner-only permissions).");
+            let env_path = canonical_env_path();
+            if write_env_file(&env_path, &content).is_ok() {
+                println!("Credentials saved to {} (owner-only permissions).", env_path.display());
             }
         }
         Ok(r)  => println!("\n❌ Registration failed: {}", r.text().unwrap_or_default()),
@@ -280,6 +284,7 @@ fn run_register() {
 }
 
 fn run_init() {
+    dotenvy::from_path(canonical_env_path()).ok();
     dotenv().ok();
     println!("--- Enable Banking Interactive Setup ---");
 

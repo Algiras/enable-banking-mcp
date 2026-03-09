@@ -140,7 +140,18 @@
           <input name="bank_name" id="bank-name-input" type="text" required placeholder="e.g. Swedbank"
             autocomplete="off" oninput="onBankInput(this)" onfocus="onBankInput(this)" onblur="hideBankDropdown()">
           <ul id="bank-dropdown" style="display:none;position:absolute;left:0;right:0;top:100%;margin:2px 0 0;padding:0;list-style:none;background:var(--surface);border:1px solid var(--border);border-radius:7px;max-height:180px;overflow-y:auto;z-index:999;box-shadow:0 4px 16px rgba(0,0,0,.25)"></ul>
-          <div id="bank-load-status" style="font-size:10px;color:var(--muted);margin-top:3px;display:none"></div>
+            <div id="bank-load-status" style="font-size:10px;color:var(--muted);margin-top:3px;display:none"></div>
+        </div>
+        <div class="field full" id="sandbox-tip" style="display:none">
+          <div id="sandbox-tip-de" style="display:none;font-size:10px;padding:7px 10px;background:rgba(88,166,255,.08);border:1px solid rgba(88,166,255,.25);border-radius:6px;color:var(--muted);line-height:1.6">
+            <strong style="color:var(--blue)">Sandbox tip (DE):</strong> Use <strong>DKB</strong> — debtor <code style="color:var(--blue)">DE52500105173911841934</code>, creditor <code style="color:var(--blue)">DE54500105173424724776</code>, credentials <code style="color:var(--blue)">aspsp4 / aspsp4</code>.
+          </div>
+          <div id="sandbox-tip-fi" style="display:none;font-size:10px;padding:7px 10px;background:rgba(88,166,255,.08);border:1px solid rgba(88,166,255,.25);border-radius:6px;color:var(--muted);line-height:1.6">
+            <strong style="color:var(--blue)">Sandbox tip (FI):</strong>
+            <strong>S-Pankki</strong> — creditor <code style="color:var(--blue)">FI7473834510057469</code>, credentials <code style="color:var(--blue)">customera / 12345678</code>, leave debtor + remittance blank.<br>
+            <strong>Nordea</strong> — creditor <code style="color:var(--blue)">FI2112345600000785</code>, credentials <code style="color:var(--blue)">customera / 12345678</code>, remittance <code style="color:var(--blue)">testing</code>, leave debtor blank.<br>
+            ⚠️ Both may return <em>server_error</em> during authorization — this is an Enable Banking sandbox infrastructure issue, not your configuration.
+          </div>
         </div>
         <div class="field">
           <label>Payment Type</label>
@@ -192,8 +203,12 @@
           <input name="creditor_iban" type="text" required placeholder="LT00 0000 0000 0000 0000">
         </div>
         <div class="field full">
-          <label>Reference / Remittance Info <span class="optional">optional</span></label>
-          <input name="remittance" type="text" placeholder="Invoice #, payment reference…">
+          <label>Remittance Info <span class="optional">optional — message to recipient</span></label>
+          <input name="remittance" type="text" placeholder="Invoice #, payment description…">
+        </div>
+        <div class="field full">
+          <label>Reference Number <span class="optional">optional — structured ref e.g. Finnish RF</span></label>
+          <input name="reference_number" type="text" placeholder="e.g. 123 or RF12345">
         </div>
       </div>
     </div>
@@ -275,6 +290,22 @@
   </div>
   <div class="pid-label" style="margin-top:12px">Payment ID</div>
   <div class="pid-box" id="pid-box" title="Click to select"></div>
+
+  <div style="margin-top:12px;display:flex;gap:8px;align-items:center">
+    <button id="check-status-btn" onclick="checkPaymentStatus()"
+      style="background:var(--surface);border:1px solid var(--border);border-radius:6px;color:var(--text);cursor:pointer;font-size:11px;font-weight:600;padding:6px 14px;transition:border-color .15s,color .15s"
+      onmouseover="this.style.borderColor='var(--blue)';this.style.color='var(--blue)'"
+      onmouseout="this.style.borderColor='var(--border)';this.style.color='var(--text)'">↻ Check Status</button>
+    <span id="status-result" style="font-size:11px;color:var(--muted)"></span>
+  </div>
+
+  <div id="status-detail" style="display:none;margin-top:8px;padding:8px 12px;border-radius:6px;font-size:11px;font-family:ui-monospace,monospace;line-height:1.7;word-break:break-all;background:var(--bg);border:1px solid var(--border)"></div>
+
+  <div style="margin-top:12px;font-size:10px;color:var(--muted);padding:7px 10px;background:rgba(255,255,255,.04);border-radius:6px;line-height:1.6">
+    <strong>Sandbox PIS:</strong> <strong>FI → S-Pankki</strong> (creditor <code style="color:var(--blue)">FI7473834510057469</code>, no remittance needed) or <strong>Nordea</strong> (creditor <code style="color:var(--blue)">FI2112345600000785</code>, remittance <code style="color:var(--blue)">testing</code>) — credentials <code style="color:var(--blue)">customera / 12345678</code>.<br>
+    <strong>DE → DKB</strong>: debtor <code style="color:var(--blue)">DE52500105173911841934</code>, creditor <code style="color:var(--blue)">DE54500105173424724776</code>, credentials <code style="color:var(--blue)">aspsp4 / aspsp4</code>.<br>
+    ⚠️ <em>server_error</em> during authorization = Enable Banking sandbox infrastructure outage. Nothing is wrong with your config — try again later or contact Enable Banking support.
+  </div>
   <button class="back-btn" onclick="showForm()">← New Payment</button>
 </div>
 
@@ -325,20 +356,110 @@ function loadSessionsList() {
   });
 }
 
-function showForm() {
-  document.getElementById('form-panel').style.display = '';
-  document.getElementById('result-panel').style.display = 'none';
-}
 let _currentAuthUrl = null;
+let _pollTimer = null;
+let _pollCount = 0;
+const TERMINAL_STATUSES = ['ACCP','ACSC','ACSP','ACWC','ACWP','ACTC','PART','RJCT','CANC'];
+
+function stopPolling() {
+  if (_pollTimer) { clearTimeout(_pollTimer); _pollTimer = null; }
+}
+
+function pollPaymentStatus(pid) {
+  if (!pid || pid === '—') return;
+  _pollCount++;
+  callTool('get_payment', { payment_id: pid }, function(result, err) {
+    if (document.getElementById('result-panel').style.display === 'none') { stopPolling(); return; }
+    const statusEl = document.getElementById('status-result');
+    const detailEl = document.getElementById('status-detail');
+    if (!err && !result?.isError) {
+      try {
+        const text = result?.content?.[0]?.text || '';
+        const data = result?.structuredContent || JSON.parse(text);
+        const status = data?.status || data?.payment_status || '';
+        if (status) {
+          const isOk  = TERMINAL_STATUSES.slice(0,7).includes(status);
+          const isErr = ['RJCT','CANC'].includes(status);
+          statusEl.style.color = isOk ? 'var(--green)' : isErr ? 'var(--red)' : 'var(--gold)';
+          statusEl.textContent = status;
+          detailEl.style.display = '';
+          // Surface rejection reason prominently
+          const reason = data?.status_reason_information;
+          const reasonHtml = reason
+            ? `<div style="margin-bottom:6px;padding:6px 8px;background:rgba(248,81,73,.1);border-radius:4px;border-left:3px solid var(--red)">` +
+              `<strong style="color:var(--red)">Rejection reason:</strong> ` +
+              `${reason.status_reason_code || ''} — ${reason.status_reason_description || 'no description'}</div>`
+            : (isErr ? `<div style="margin-bottom:6px;padding:6px 8px;background:rgba(248,81,73,.1);border-radius:4px;border-left:3px solid var(--red);color:var(--muted);font-size:10px">No rejection reason returned by bank.</div>` : '');
+          detailEl.innerHTML = reasonHtml + Object.entries(data)
+            .map(([k,v]) => `<div><span style="color:var(--muted)">${k}:</span> <span style="color:var(--blue)">${typeof v === 'object' ? JSON.stringify(v) : v}</span></div>`)
+            .join('');
+          if (TERMINAL_STATUSES.includes(status)) { stopPolling(); return; }
+        }
+      } catch(_) {}
+    }
+    // Keep polling up to ~3 min (36 × 5s)
+    if (_pollCount < 36) { _pollTimer = setTimeout(() => pollPaymentStatus(pid), 5000); }
+    else { stopPolling(); statusEl.textContent += ' (stopped polling)'; }
+  });
+}
+
 function showResult(authUrl, paymentId) {
   document.getElementById('form-panel').style.display = 'none';
   document.getElementById('result-panel').style.display = 'block';
   _currentAuthUrl = authUrl || null;
   document.getElementById('auth-url-text').value = authUrl || '—';
   document.getElementById('pid-box').textContent = paymentId || '—';
+  document.getElementById('status-result').textContent = 'Waiting for bank…';
+  document.getElementById('status-result').style.color = 'var(--muted)';
+  document.getElementById('status-detail').style.display = 'none';
   // Best-effort open (works if sandbox allows popups)
   if (authUrl) { try { window.open(authUrl, '_blank', 'noopener'); } catch(_) {} }
+  // Start polling payment status
+  stopPolling();
+  _pollCount = 0;
+  if (paymentId) { _pollTimer = setTimeout(() => pollPaymentStatus(paymentId), 3000); }
 }
+
+function showForm() {
+  stopPolling();
+  document.getElementById('form-panel').style.display = '';
+  document.getElementById('result-panel').style.display = 'none';
+}
+function checkPaymentStatus() {
+  const pid = document.getElementById('pid-box').textContent.trim();
+  if (!pid || pid === '—') return;
+  const btn = document.getElementById('check-status-btn');
+  const statusEl = document.getElementById('status-result');
+  const detailEl = document.getElementById('status-detail');
+  btn.disabled = true; btn.textContent = 'Checking…';
+  statusEl.textContent = '';
+  callTool('get_payment', { payment_id: pid }, function(result, err) {
+    btn.disabled = false; btn.textContent = '↻ Check Status';
+    if (err || result?.isError) {
+      const msg = result?.content?.[0]?.text || String(err);
+      statusEl.style.color = 'var(--red)'; statusEl.textContent = '✗ ' + msg;
+      detailEl.style.display = 'none';
+      return;
+    }
+    try {
+      const text = result?.content?.[0]?.text || '';
+      const data = result?.structuredContent || JSON.parse(text);
+      const status = data?.status || data?.payment_status || 'UNKNOWN';
+      const isOk = ['ACCP','ACSC','ACSP','ACWC','ACWP','ACTC','PART'].includes(status);
+      const isErr = ['RJCT','CANC'].includes(status) || status.startsWith('ERR');
+      statusEl.style.color = isOk ? 'var(--green)' : isErr ? 'var(--red)' : 'var(--gold)';
+      statusEl.textContent = status;
+      detailEl.style.display = '';
+      detailEl.innerHTML = Object.entries(data)
+        .map(([k,v]) => `<div><span style="color:var(--muted)">${k}:</span> <span style="color:var(--blue)">${typeof v === 'object' ? JSON.stringify(v) : v}</span></div>`)
+        .join('');
+    } catch(e) {
+      statusEl.style.color = 'var(--muted)'; statusEl.textContent = result?.content?.[0]?.text || e.message;
+      detailEl.style.display = 'none';
+    }
+  });
+}
+
 function copyAuthUrl() {
   const inp = document.getElementById('auth-url-text');
   inp.select();
@@ -353,6 +474,10 @@ let _allBanks = [];
 function onCountryInput(el) {
   el.value = el.value.toUpperCase();
   const country = el.value.trim();
+  const hasTip = country === 'DE' || country === 'FI';
+  document.getElementById('sandbox-tip').style.display = hasTip ? '' : 'none';
+  document.getElementById('sandbox-tip-de').style.display = country === 'DE' ? '' : 'none';
+  document.getElementById('sandbox-tip-fi').style.display = country === 'FI' ? '' : 'none';
   if (country.length !== 2 || country === _bankFetchCountry) return;
   _bankFetchCountry = country;
   _allBanks = [];
@@ -519,8 +644,9 @@ document.getElementById('form').addEventListener('submit', function(e) {
   const debtorIban = (selEl.style.display !== 'none' && selEl.value && selEl.value !== '__manual__')
     ? selEl.value
     : g('debtor_iban').replace(/\s/g, '');
-  if (g('remittance'))     args.remittance     = g('remittance');
-  if (debtorIban)          args.debtor_iban    = debtorIban;
+  if (g('remittance'))        args.remittance        = g('remittance');
+  if (g('reference_number'))  args.reference_number  = g('reference_number');
+  if (debtorIban)             args.debtor_iban       = debtorIban;
   if (g('execution_date')) args.execution_date = g('execution_date');
   if (g('language'))       args.language       = g('language');
 
@@ -535,6 +661,8 @@ document.getElementById('form').addEventListener('submit', function(e) {
         'REDIRECT_URI_NOT_ALLOWED': 'The redirect URL is not registered in your Enable Banking app.',
         'INVALID_AMOUNT': 'Check the amount format (e.g. 1.00).',
         'INVALID_IBAN': 'One of the IBANs is malformed.',
+        'CONNECTOR_NOT_FOUND': 'This bank has no PIS connector in sandbox. Try FI → S-Pankki or Nordea, or DE → DKB.',
+        'server_error': 'Enable Banking sandbox returned a server error (infrastructure issue). Try again, or try a different bank: FI → Nordea or S-Pankki, DE → DKB.',
       };
       const code = (raw.match(/\[([A-Z_]+)\]/) || [])[1];
       const hint = hints[code] ? ` — ${hints[code]}` : '';

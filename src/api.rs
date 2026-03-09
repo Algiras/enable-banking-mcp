@@ -105,6 +105,8 @@ pub struct PaymentRequestBody {
     pub credit_transfer_transaction: Vec<CreditTransfer>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub debtor_account: Option<AccountIdentification>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub debtor_currency: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -113,6 +115,8 @@ pub struct CreditTransfer {
     pub beneficiary:            Beneficiary,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub remittance_information: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reference_number:       Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub requested_execution_date: Option<String>,
 }
@@ -155,6 +159,7 @@ impl PaymentRequest {
         execution_date: Option<&str>,
         webhook_url: Option<&str>,
         language: Option<&str>,
+        reference_number: Option<&str>,
     ) -> Self {
         Self {
             aspsp:        Aspsp { name: bank_name.to_string(), country: country.to_string() },
@@ -169,6 +174,7 @@ impl PaymentRequest {
                     identification: iban.to_string(),
                     scheme_name:    "IBAN".to_string(),
                 }),
+                debtor_currency: debtor_iban.map(|_| currency.to_string()),
                 credit_transfer_transaction: vec![CreditTransfer {
                     instructed_amount: Amount {
                         amount:   fmt_amount(amount),
@@ -184,6 +190,7 @@ impl PaymentRequest {
                         },
                     },
                     remittance_information: if remittance.is_empty() { vec![] } else { vec![remittance.to_string()] },
+                    reference_number: reference_number.filter(|s| !s.is_empty()).map(str::to_string),
                     requested_execution_date: execution_date.map(str::to_string),
                 }],
             },

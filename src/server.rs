@@ -19,9 +19,20 @@ use crate::{sessions, tools};
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+/// Returns the canonical credentials path: `~/.enable-banking/.env`
+pub fn canonical_env_path() -> std::path::PathBuf {
+    dirs::home_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join(".enable-banking")
+        .join(".env")
+}
+
 /// Write a credentials file with owner-only permissions (0600 on Unix).
-pub fn write_env_file(path: &str, content: &str) -> std::io::Result<()> {
+pub fn write_env_file(path: &std::path::Path, content: &str) -> std::io::Result<()> {
     use std::io::Write;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
     let mut opts = std::fs::OpenOptions::new();
     opts.write(true).create(true).truncate(true);
     #[cfg(unix)]
@@ -289,7 +300,8 @@ fn build_tools() -> Vec<Tool> {
                 p("currency",         "string", "ISO currency code, e.g. EUR"),
                 p("creditor_name",    "string", "Recipient name"),
                 p("creditor_iban",    "string", "Recipient IBAN"),
-                p("remittance",       "string", "Payment reference / message"),
+                p("remittance",       "string", "Payment message / description"),
+                p("reference_number", "string", "Structured reference number (e.g. Finnish RF reference). Used instead of or alongside remittance for some banks (S-Pankki, Nordea)."),
                 pd("psu_type",        "string", "personal or business", "personal"),
                 pd("payment_type",    "string", "SEPA, INST_SEPA, DOMESTIC", "SEPA"),
                 p("debtor_iban",      "string", "Sender account IBAN (optional; PSU chooses if omitted)"),
@@ -353,7 +365,8 @@ impl EnableBankingServer {
 
     /// Return data as both text content (model context) and structuredContent (UI rendering).
     /// The host sends structuredContent to the iframe via ui/notifications/tool-result.
-    fn ok_ui(&self, data: Value, _kind: &str) -> CallToolResult {
+    fn ok_ui(&self, data: Value, kind: &str) -> CallToolResult {
+        let uri = format!("ui://{kind}");
         let obj = match data.clone() {
             Value::Object(m) => m,
             other => {
@@ -366,14 +379,19 @@ impl EnableBankingServer {
             Content::text(serde_json::to_string_pretty(&data).unwrap_or_default()),
         ]);
         r.structured_content = Some(Value::Object(obj));
+        // Tell the host which resource iframe should receive this result
+        r.meta = Some(Meta(serde_json::from_value(json!({
+            "ui": { "resourceUri": uri },
+            "io.modelcontextprotocol/ui": { "resourceUri": uri }
+        })).unwrap()));
         r
     }
 
     fn jwt(&self) -> Result<String, String> {
         let app_id = self.app_id.as_ref()
-            .ok_or("Missing ENABLE_BANKING_APP_ID. Use the 'configure_secrets' tool.")?;
+            .ok_or("Not configured. Call 'setup_guide' for instructions, or ask me to run 'configure_secrets' with your Enable Banking Application ID and private key.")?;
         let raw_key = self.raw_key.as_ref()
-            .ok_or("Missing ENABLE_BANKING_PRIVATE_KEY. Use the 'configure_secrets' tool.")?;
+            .ok_or("Missing ENABLE_BANKING_PRIVATE_KEY. Call 'setup_guide' for setup instructions.")?;
         generate_jwt(app_id, &raw_key.replace("\\n", "\n"))
             .map_err(|e| format!("JWT error: {e}. Check your private key or use 'configure_secrets'."))
     }
@@ -383,15 +401,22 @@ impl EnableBankingServer {
 
             "setup_guide" => ok_str(format!(
                 "## Enable Banking MCP Setup Guide\n\n\
-                 1. **ENABLE_BANKING_APP_ID**: Your Application ID.\n\
-                 2. **ENABLE_BANKING_PRIVATE_KEY**: Your RSA private key.\n\
-                 3. **ENABLE_BANKING_ENV**: `sandbox` or `production` (Current: {})\n\n\
-                 ### Interactive 'No-Look' Setup\n\
+                 ### Step 1 — Get your credentials\n\
+                 **Sandbox (free, for testing):**\n\
+                 1. Go to https://enablebanking.com/signup and create an account.\n\
+                 2. In the Control Panel → Applications, create a new **Sandbox** app.\n\
+                 3. Copy your **Application ID** and download the **private key** (PEM).\n\n\
+                 **Production:** run `enable-banking-mcp register` — it generates the key and registers automatically.\n\n\
+                 ### Step 2 — Save credentials (in-chat)\n\
+                 Ask me: *\"Configure my Enable Banking credentials\"* and I will call `configure_secrets` — \
+                 just paste your Application ID and private key when prompted. \
+                 Credentials are saved to `~/.enable-banking/.env` and loaded automatically on restart.\n\n\
+                 ### Step 2 (alternative) — CLI setup\n\
                  ```sh\n\
-                 enable-banking-mcp register\n\
-                 enable-banking-mcp init\n\
                  enable-banking-mcp install\n\
-                 ```\n\n\
+                 ```\n\
+                 This saves credentials directly into the Claude Desktop config.\n\n\
+                 ### Current environment: {}\n\n\
                  ### Visual UI Dashboards\n\
                  This MCP server renders interactive visual dashboards **directly in the chat** using MCP Apps (SEP-1865).\n\
                  Supported clients: **claude.ai web**, **Claude Desktop**, Cursor, VS Code Copilot.\n\
@@ -535,9 +560,10 @@ impl EnableBankingServer {
                     "ENABLE_BANKING_ENV={}\nENABLE_BANKING_APP_ID={aid}\nENABLE_BANKING_PRIVATE_KEY=\"{pk_fmt}\"\n",
                     self.env_mode,
                 );
-                match write_env_file(".env", &content) {
-                    Ok(_)  => ok_str("Successfully saved credentials to .env (permissions: owner-only). Please restart Claude Desktop if the new configuration has not applied."),
-                    Err(e) => err_result(format!("Failed to save .env: {e}")),
+                let env_path = canonical_env_path();
+                match write_env_file(&env_path, &content) {
+                    Ok(_)  => ok_str(format!("Successfully saved credentials to {} (permissions: owner-only). Please restart Claude Desktop.", env_path.display())),
+                    Err(e) => err_result(format!("Failed to save {}: {e}", env_path.display())),
                 }
             }
 
@@ -574,7 +600,20 @@ impl EnableBankingServer {
                             }
                             enriched.push(entry);
                         }
-                        self.ok_ui(serde_json::to_value(enriched).unwrap_or_default(), "sessions")
+                        let all_dead = enriched.iter().all(|e| {
+                            let s = e["live_status"].as_str().unwrap_or("").to_uppercase();
+                            s.starts_with("ERROR") || s == "EXPIRED" || s == "REVOKED" || s == "UNAUTHORIZED"
+                        });
+                        let mut result = self.ok_ui(serde_json::to_value(enriched).unwrap_or_default(), "sessions");
+                        if all_dead {
+                            // Append a plain-text note the LLM will see
+                            if let Some(content) = result.content.first_mut() {
+                                if let rmcp::model::RawContent::Text(t) = &mut content.raw {
+                                    t.text = format!("{}\n\n⚠️ All sessions are expired or invalid. Tell the user their sessions have expired and call `connect_bank_ui` to start a new bank connection before attempting any account or payment operations.", t.text);
+                                }
+                            }
+                        }
+                        result
                     }
                     Err(_) => self.ok_ui(serde_json::to_value(&saved).unwrap_or(json!([])), "sessions")
                 }
@@ -614,7 +653,14 @@ impl EnableBankingServer {
                 let url = format!("{}/sessions/{id}", self.base);
                 let result = match self.client.delete(&token, &url).await {
                     Ok(d)  => ok_result(d),
-                    Err(e) => err_result(e.to_string()),
+                    Err(e) => {
+                        let msg = e.to_string();
+                        // Session is already gone on server — clean up locally too
+                        if msg.contains("EXPIRED_SESSION") || msg.contains("SESSION_DOES_NOT_EXIST") {
+                            sessions::remove_session(&id).ok();
+                        }
+                        err_result(msg)
+                    }
                 };
                 if !result.is_error.unwrap_or(false) {
                     sessions::remove_session(&id).ok();
@@ -720,6 +766,7 @@ impl EnableBankingServer {
                     args.opt_str("execution_date").as_deref(),
                     args.opt_str("webhook_url").as_deref(),
                     args.opt_str("language").as_deref(),
+                    args.opt_str("reference_number").as_deref(),
                 );
                 let url = format!("{}/payments", self.base);
                 let body_json = serde_json::to_string_pretty(&body).unwrap_or_default();
