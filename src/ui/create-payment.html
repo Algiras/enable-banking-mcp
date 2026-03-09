@@ -231,6 +231,23 @@
           <label>Execution Date <span class="optional">optional</span></label>
           <input name="execution_date" type="date">
         </div>
+        <div class="field">
+          <label>Language <span class="optional">bank UI language</span></label>
+          <select name="language">
+            <option value="">— default —</option>
+            <option value="en">English (en)</option>
+            <option value="lt">Lithuanian (lt)</option>
+            <option value="lv">Latvian (lv)</option>
+            <option value="et">Estonian (et)</option>
+            <option value="fi">Finnish (fi)</option>
+            <option value="sv">Swedish (sv)</option>
+            <option value="de">German (de)</option>
+            <option value="fr">French (fr)</option>
+            <option value="nl">Dutch (nl)</option>
+            <option value="pl">Polish (pl)</option>
+            <option value="ru">Russian (ru)</option>
+          </select>
+        </div>
       </div>
     </div>
 
@@ -505,6 +522,7 @@ document.getElementById('form').addEventListener('submit', function(e) {
   if (g('remittance'))     args.remittance     = g('remittance');
   if (debtorIban)          args.debtor_iban    = debtorIban;
   if (g('execution_date')) args.execution_date = g('execution_date');
+  if (g('language'))       args.language       = g('language');
 
   callTool('create_payment', args, (result, err) => {
     btn.disabled = false; btn.textContent = 'Initiate Payment →';
