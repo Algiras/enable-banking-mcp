@@ -599,7 +599,7 @@
         try {
           const text = result.content?.[0]?.text;
           const parsed = text ? JSON.parse(text) : result;
-          banks = Array.isArray(parsed) ? parsed : (parsed.banks ?? parsed.data ?? []);
+          banks = Array.isArray(parsed) ? parsed : (parsed.aspsps ?? parsed.banks ?? parsed.data ?? []);
         } catch (e) {
           errEl.textContent = 'Could not parse bank list.';
           errEl.style.display = 'block';
