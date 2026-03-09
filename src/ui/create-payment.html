@@ -224,7 +224,7 @@
       <div class="fields">
         <div class="field full">
           <label>Redirect URL <span class="optional">after bank authorisation</span></label>
-          <input name="redirect_url" type="text" value="{{REDIRECT_URL}}">
+          <input name="redirect_url" type="text" value="{{PAYMENT_REDIRECT_URL}}">
         </div>
         <div class="field">
           <label>Execution Date <span class="optional">optional</span></label>
@@ -465,7 +465,7 @@ document.getElementById('form').addEventListener('submit', function(e) {
     bank_name:     g('bank_name'),
     country:       g('country').toUpperCase(),
     state:         uuid(),
-    redirect_url:  g('redirect_url') || '{{REDIRECT_URL}}',
+    redirect_url:  g('redirect_url') || '{{PAYMENT_REDIRECT_URL}}',
     amount:        g('amount'),
     currency:      g('currency'),
     creditor_name: g('creditor_name'),
