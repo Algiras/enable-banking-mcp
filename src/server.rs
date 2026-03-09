@@ -870,10 +870,7 @@ impl ServerHandler for EnableBankingServer {
             ));
         };
 
-        let payment_redirect_url = self.redirect_url.replace("/callback", "/payment-callback");
-        let html = html_tpl
-            .replace("{{REDIRECT_URL}}", &self.redirect_url)
-            .replace("{{PAYMENT_REDIRECT_URL}}", &payment_redirect_url);
+        let html = html_tpl.replace("{{REDIRECT_URL}}", &self.redirect_url);
 
         Ok(ReadResourceResult::new(vec![
             ResourceContents::TextResourceContents {
