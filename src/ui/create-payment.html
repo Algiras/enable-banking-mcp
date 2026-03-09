@@ -342,8 +342,9 @@ function onCountryInput(el) {
   const status = document.getElementById('bank-load-status');
   status.textContent = 'Loading banks…'; status.style.display = '';
   callTool('get_available_banks', { country, service: 'PIS' }, function(result, err) {
-    if (err) { status.textContent = 'Error fetching banks'; _bankFetchCountry = null; return; }
-    if (result?.isError) { status.textContent = result?.content?.[0]?.text || 'API error'; _bankFetchCountry = null; return; }
+    if (err) { status.textContent = 'Error fetching banks: ' + (err?.message || 'unknown'); status.style.color = 'var(--red)'; _bankFetchCountry = null; return; }
+    if (result?.isError) { status.textContent = result?.content?.[0]?.text || 'API error'; status.style.color = 'var(--red)'; _bankFetchCountry = null; return; }
+    status.style.color = '';
     try {
       const text = result?.content?.[0]?.text || '';
       const data = result?.structuredContent || (text ? JSON.parse(text) : null);
@@ -509,9 +510,18 @@ document.getElementById('form').addEventListener('submit', function(e) {
     btn.disabled = false; btn.textContent = 'Initiate Payment →';
     if (err || result?.isError) {
       const raw = result?.content?.[0]?.text || err?.message || 'Payment initiation failed';
-      // Strip verbose prefix like "Error: 422 Unprocessable Entity [CODE]: " → keep just the message
-      const msg = raw.replace(/^Error:\s*\d+[^:]*\[[^\]]+\]:\s*/i, '').replace(/^Error:\s*/i, '');
-      errEl.textContent = msg; errEl.style.display = '';
+      // Keep [ERROR_CODE] but strip HTTP status prefix "Error: 422 Unprocessable Entity "
+      const msg = raw.replace(/^Error:\s*\d+\s+[A-Za-z ]+(?=\[)/i, '').replace(/^Error:\s*/i, '');
+      const hints = {
+        'WRONG_ASPSP_PROVIDED': 'Enter country first — the bank dropdown will show valid names.',
+        'REDIRECT_URI_NOT_ALLOWED': 'The redirect URL is not registered in your Enable Banking app.',
+        'INVALID_AMOUNT': 'Check the amount format (e.g. 1.00).',
+        'INVALID_IBAN': 'One of the IBANs is malformed.',
+      };
+      const code = (raw.match(/\[([A-Z_]+)\]/) || [])[1];
+      const hint = hints[code] ? ` — ${hints[code]}` : '';
+      errEl.innerHTML = `<strong>${msg}</strong>${hint ? `<br><span style="font-size:11px;opacity:.8">${hint}</span>` : ''}`;
+      errEl.style.display = '';
       return;
     }
     const text = result?.content?.[0]?.text || '';
