@@ -202,8 +202,10 @@
       <div class="fields">
         <div class="field full" style="display:flex;gap:6px;align-items:flex-end">
           <div style="flex:1">
-            <label>Session ID <span class="optional">to load your accounts</span></label>
-            <input id="session-id-input" type="text" placeholder="Paste session_id…" style="font-family:ui-monospace,monospace;font-size:11px">
+            <label>Session <span class="optional">to load your accounts</span></label>
+            <select id="session-id-input" style="font-family:ui-monospace,monospace;font-size:11px;width:100%">
+              <option value="">Loading sessions…</option>
+            </select>
           </div>
           <button type="button" id="load-accounts-btn" onclick="loadAccounts()" style="height:34px;padding:0 12px;background:var(--surface);border:1px solid var(--border);border-radius:7px;color:var(--text);cursor:pointer;font-size:12px;white-space:nowrap;flex-shrink:0">Load ↓</button>
         </div>
@@ -276,6 +278,32 @@ function uuid() {
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
     const r = Math.random() * 16 | 0;
     return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+  });
+}
+
+function loadSessionsList() {
+  callTool('list_sessions', {}, function(result, err) {
+    const sel = document.getElementById('session-id-input');
+    if (err || result?.isError || !result) {
+      sel.innerHTML = '<option value="">— paste session_id manually —</option>';
+      return;
+    }
+    try {
+      const text = result?.content?.[0]?.text ?? '';
+      const data = result?.structuredContent || JSON.parse(text);
+      const sessions = Array.isArray(data) ? data : (data.sessions ?? []);
+      if (!sessions.length) {
+        sel.innerHTML = '<option value="">— no sessions found —</option>';
+        return;
+      }
+      sel.innerHTML = '<option value="">— pick a session —</option>' +
+        sessions.map(s => {
+          const label = s.label && s.label !== s.session_id ? s.label : (s.bank || 'Session');
+          return `<option value="${s.session_id}">${label} (${s.session_id.slice(0,8)}…)</option>`;
+        }).join('');
+    } catch(e) {
+      sel.innerHTML = '<option value="">— paste session_id manually —</option>';
+    }
   });
 }
 
@@ -484,6 +512,7 @@ window.addEventListener('message', function(event) {
     const hc = msg.result?.hostContext;
     if (hc?.theme === 'light') document.documentElement.setAttribute('data-theme', 'light');
     try { window.parent.postMessage({ jsonrpc: '2.0', method: 'ui/notifications/initialized', params: {} }, '*'); } catch(_) {}
+    loadSessionsList();
     return;
   }
   if (msg.jsonrpc === '2.0' && typeof msg.id === 'number' && msg.id >= 10 && _pending[msg.id]) {
