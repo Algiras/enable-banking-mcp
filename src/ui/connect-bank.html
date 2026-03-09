@@ -674,13 +674,15 @@
         }
 
         let url = null;
+        const text = result.content?.[0]?.text ?? '';
         try {
-          const text = result.content?.[0]?.text;
-          const parsed = text ? JSON.parse(text) : result;
-          url = parsed.url ?? parsed.auth_url ?? parsed.authorization_url ?? text;
-        } catch (e) {
-          const text = result.content?.[0]?.text ?? '';
-          if (text.startsWith('http')) url = text;
+          const parsed = JSON.parse(text);
+          url = parsed.url ?? parsed.auth_url ?? parsed.authorization_url ?? null;
+        } catch (_) {}
+        // Server returns plain text with the URL on its own line
+        if (!url) {
+          const m = text.match(/https?:\/\/\S+/);
+          if (m) url = m[0].replace(/[.,;)\]>]+$/, ''); // trim trailing punctuation
         }
 
         if (!url || !url.startsWith('http')) {
